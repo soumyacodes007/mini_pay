@@ -1,4 +1,4 @@
-import { http, createConfig } from 'wagmi'
+import { http, createConfig, createStorage } from 'wagmi'
 import { baseSepolia } from 'wagmi/chains'
 import { coinbaseWallet } from 'wagmi/connectors'
 
@@ -14,6 +14,8 @@ export const config = createConfig({
   transports: {
     [baseSepolia.id]: http(),
   },
+  // Enable session persistence - reconnects to SAME wallet on page refresh
+  storage: createStorage({ storage: typeof window !== 'undefined' ? window.localStorage : undefined }),
 })
 
 // USDC Contract on Base Sepolia

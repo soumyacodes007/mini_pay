@@ -4,14 +4,26 @@ import { LogInWithAnonAadhaar, useAnonAadhaar } from '@anon-aadhaar/react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { storeIdentity } from '@/lib/identity-storage'
+import { storeIdentity, getStoredIdentity } from '@/lib/identity-storage'
+import { getUsername } from '@/lib/username-registry'
 import confetti from 'canvas-confetti'
 
 export function AadhaarVerification() {
     const [anonAadhaar] = useAnonAadhaar()
     const { address } = useAccount()
-    const [showSuccess, setShowSuccess] = useState(false)
     const [identityStored, setIdentityStored] = useState(false)
+    const [alreadyVerified, setAlreadyVerified] = useState(false)
+
+    // Check if already verified on mount
+    useEffect(() => {
+        if (address) {
+            const existing = getStoredIdentity()
+            if (existing && existing.walletAddress.toLowerCase() === address.toLowerCase()) {
+                setAlreadyVerified(true)
+                setIdentityStored(true)
+            }
+        }
+    }, [address])
 
     useEffect(() => {
         // Debug logging for ZK proof status
@@ -28,7 +40,6 @@ export function AadhaarVerification() {
         } else if (anonAadhaar.status === 'logged-in') {
             console.log('[AADHAAR] ✅ ZK PROOF GENERATION COMPLETE!')
             console.log('[AADHAAR] 🎉 User is now verified!')
-            setShowSuccess(true)
 
             // Store identity for recovery (only once)
             if (!identityStored && address) {
@@ -55,8 +66,13 @@ export function AadhaarVerification() {
                 }
 
                 if (nullifier) {
-                    storeIdentity(nullifier, address)
+                    // Get username if registered
+                    const username = getUsername(address)
+                    
+                    // Store identity with username
+                    storeIdentity(nullifier, address, username || undefined)
                     setIdentityStored(true)
+                    setAlreadyVerified(true)
                     console.log('[AADHAAR] 💾 Identity stored for future recovery! Nullifier:', nullifier.slice(0, 20) + '...')
 
                     // Celebrate!
@@ -72,12 +88,15 @@ export function AadhaarVerification() {
         }
     }, [anonAadhaar.status, anonAadhaar, address, identityStored])
 
-    if (anonAadhaar.status === 'logged-in') {
+    // Show verified state
+    if (anonAadhaar.status === 'logged-in' || alreadyVerified) {
+        const username = address ? getUsername(address) : null
+        
         return (
             <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="p-6 bg-green-50 border-2 border-green-500 rounded-2xl"
+                className="w-full max-w-md p-6 bg-green-50 border-2 border-green-500 rounded-2xl mx-auto"
             >
                 <div className="flex items-center gap-3 mb-4">
                     <span className="text-3xl">✅</span>
@@ -86,21 +105,48 @@ export function AadhaarVerification() {
                         <p className="text-sm text-green-600">Unique identity confirmed via ZK proof</p>
                     </div>
                 </div>
-                <div className="p-3 bg-green-100 rounded-lg text-sm text-green-700">
+                
+                <div className="p-4 bg-green-100 rounded-lg text-sm text-green-700 space-y-2">
                     <p className="font-semibold">🔐 Recovery Enabled</p>
-                    <p className="text-xs mt-1">You can now recover this wallet anytime using your Aadhaar - no seed phrase needed!</p>
+                    <p className="text-xs">
+                        Your wallet is now linked to your Aadhaar identity. 
+                        If you ever lose access, you can recover it by verifying your Aadhaar again.
+                    </p>
+                    {username && (
+                        <p className="text-xs mt-2">
+                            <span className="font-medium">Linked MiniPay ID:</span> {username}@minipay
+                        </p>
+                    )}
+                </div>
+
+                <div className="mt-4 p-3 bg-white rounded-lg border border-green-200">
+                    <p className="text-xs text-gray-600 text-center">
+                        💡 <span className="font-medium">How recovery works:</span> Your Aadhaar generates a unique 
+                        cryptographic identifier (nullifier) that's linked to this wallet. 
+                        Same Aadhaar = Same identifier = Wallet recovered!
+                    </p>
                 </div>
             </motion.div>
         )
     }
 
     return (
-        <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-xl">
+        <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-xl mx-auto">
             <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Verify Identity</h2>
                 <p className="text-sm text-gray-500 mt-1">
-                    Prove you're a unique user without revealing personal info
+                    Link your Aadhaar to enable wallet recovery
                 </p>
+            </div>
+
+            {/* Why verify section */}
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800 font-medium">🛡️ Why verify?</p>
+                <ul className="text-xs text-blue-700 mt-1 space-y-1">
+                    <li>• Recover wallet if you lose your phone</li>
+                    <li>• No seed phrase to remember</li>
+                    <li>• Your Aadhaar data stays private (ZK proof)</li>
+                </ul>
             </div>
 
             {anonAadhaar.status === 'logging-in' && (

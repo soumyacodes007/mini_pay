@@ -6,12 +6,13 @@ import { AadhaarVerification } from './AadhaarVerification'
 import { PaymentQR } from './PaymentQR'
 import { QRScanner } from './QRScanner'
 import { AadhaarRecovery } from './AadhaarRecovery'
+import { getUsername } from '@/lib/username-registry'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import confetti from 'canvas-confetti'
 
 export function WalletConnect() {
-    const { address, isConnected } = useAccount()
+    const { address, isConnected, isReconnecting } = useAccount()
     const { connect, connectors, isPending, error: connectError } = useConnect()
     const { disconnect } = useDisconnect()
     const [view, setView] = useState<'send' | 'receive' | 'scan' | 'verify'>('send')
@@ -19,6 +20,25 @@ export function WalletConnect() {
     const [scannedRecipient, setScannedRecipient] = useState('')
     const [scannedAmount, setScannedAmount] = useState('')
     const [showRecovery, setShowRecovery] = useState(false)
+    const [hasExistingWallet, setHasExistingWallet] = useState(false)
+
+    // Get username for connected wallet
+    const username = address ? getUsername(address) : null
+
+    // Check if user has connected before
+    useEffect(() => {
+        const savedWallet = localStorage.getItem('minipay_last_wallet')
+        if (savedWallet) {
+            setHasExistingWallet(true)
+        }
+    }, [])
+
+    // Save wallet address when connected
+    useEffect(() => {
+        if (isConnected && address) {
+            localStorage.setItem('minipay_last_wallet', address)
+        }
+    }, [isConnected, address])
 
     // Show connect errors
     useEffect(() => {
@@ -31,7 +51,7 @@ export function WalletConnect() {
     // Coinbase Smart Wallet will be the first connector
     const coinbaseConnector = connectors[0]
 
-    const handleScanResult = (scannedAddress: string, amount: string) => {
+    const handleScanResult = (scannedAddress: string, amount: string, username?: string) => {
         // Store scanned values
         setScannedRecipient(scannedAddress)
         setScannedAmount(amount)
@@ -47,12 +67,19 @@ export function WalletConnect() {
         setView('send')
     }
 
-    const handleRecoverySuccess = (walletAddress: string) => {
-        console.log('[RECOVERY] Wallet recovered:', walletAddress)
-        // In a real implementation, this would reconnect to the wallet
-        // For demo, we'll just show a success message and go to create wallet
+    const handleRecoverySuccess = (walletAddress: string, username?: string) => {
+        console.log('[RECOVERY] Wallet recovered:', walletAddress, 'Username:', username)
         setShowRecovery(false)
-        alert(`Wallet ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)} recovered! Please reconnect with your Passkey.`)
+        
+        // Store the recovered wallet info for reference
+        localStorage.setItem('minipay_last_wallet', walletAddress)
+        if (username) {
+            localStorage.setItem('minipay_recovered_username', username)
+        }
+        
+        // Prompt user to connect with passkey
+        // The wallet address is now known, user needs to authenticate
+        alert(`Wallet found: ${username ? username + '@minipay' : walletAddress.slice(0, 10) + '...'}\n\nClick "Connect with Passkey" to access your wallet.`)
     }
 
     // Show recovery flow
@@ -75,8 +102,17 @@ export function WalletConnect() {
                     className="w-full flex flex-col items-center gap-4 p-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-xl"
                 >
                     <div className="text-white text-center">
-                        <p className="text-sm opacity-80">Smart Wallet</p>
-                        <p className="font-mono text-xs mt-1">{address.slice(0, 6)}...{address.slice(-4)}</p>
+                        {username ? (
+                            <>
+                                <p className="text-2xl font-bold">{username}@minipay</p>
+                                <p className="font-mono text-xs mt-1 opacity-70">{address.slice(0, 6)}...{address.slice(-4)}</p>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-sm opacity-80">Smart Wallet</p>
+                                <p className="font-mono text-xs mt-1">{address.slice(0, 6)}...{address.slice(-4)}</p>
+                            </>
+                        )}
                     </div>
                     <button
                         onClick={() => disconnect()}
@@ -122,7 +158,7 @@ export function WalletConnect() {
                     className="w-full"
                 >
                     {view === 'send' && <SendUSDC initialRecipient={scannedRecipient} initialAmount={scannedAmount} />}
-                    {view === 'receive' && <PaymentQR amount="10" />}
+                    {view === 'receive' && <PaymentQR />}
                     {view === 'scan' && <QRScanner onScan={handleScanResult} />}
                     {view === 'verify' && <AadhaarVerification />}
                 </motion.div>
@@ -154,9 +190,20 @@ export function WalletConnect() {
                 </motion.p>
             </div>
 
+            {/* Show reconnecting state */}
+            {isReconnecting && (
+                <div className="flex items-center gap-2 text-blue-600">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Reconnecting to wallet...</span>
+                </div>
+            )}
+
             <motion.button
                 onClick={() => { setErrorMsg(null); connect({ connector: coinbaseConnector }) }}
-                disabled={isPending}
+                disabled={isPending || isReconnecting}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="px-10 py-5 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-xl hover:shadow-2xl transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
@@ -167,12 +214,19 @@ export function WalletConnect() {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        Creating Wallet...
+                        {hasExistingWallet ? 'Connecting...' : 'Creating Wallet...'}
                     </span>
                 ) : (
-                    '🔐 Create Wallet with Passkey'
+                    hasExistingWallet ? '🔐 Connect with Passkey' : '🔐 Create Wallet with Passkey'
                 )}
             </motion.button>
+
+            {/* Show hint for existing users */}
+            {hasExistingWallet && (
+                <p className="text-xs text-gray-400">
+                    Use the same passkey to access your existing wallet
+                </p>
+            )}
 
             {/* Recovery Link */}
             <motion.button
