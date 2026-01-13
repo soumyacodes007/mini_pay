@@ -44,26 +44,47 @@ export function AadhaarVerification() {
 
             // Store identity for recovery (only once)
             if (!identityStored && address) {
+                console.log('[AADHAAR] 📦 Extracting proof data...')
+
                 // Get proofs - handle both singular and plural
                 const proofs = (anonAadhaar as any).anonAadhaarProofs || (anonAadhaar as any).anonAadhaarProof
+                console.log('[AADHAAR] 🔍 Raw proofs object:', proofs)
 
                 // Get first proof from {0: {...}} structure
                 let proofWrapper: any = null
                 if (Array.isArray(proofs)) {
                     proofWrapper = proofs[0]
+                    console.log('[AADHAAR] 📋 Proofs is array, using first element')
                 } else if (proofs && typeof proofs === 'object') {
                     proofWrapper = Object.values(proofs)[0]
+                    console.log('[AADHAAR] 📋 Proofs is object, using first value')
                 }
+
+                console.log('[AADHAAR] 📄 Proof wrapper:', proofWrapper)
 
                 // Parse PCD JSON to get nullifier
                 let nullifier = ''
                 try {
                     if (proofWrapper?.pcd) {
+                        console.log('[AADHAAR] 🔓 Parsing PCD JSON...')
                         const pcdData = JSON.parse(proofWrapper.pcd)
+                        console.log('[AADHAAR] 📊 PCD Data structure:', pcdData)
+
                         nullifier = pcdData?.proof?.nullifier?.toString() || ''
+                        console.log('[AADHAAR] 🔑 Extracted nullifier:', nullifier)
+
+                        // Log proof components for testing
+                        if (pcdData?.proof) {
+                            console.log('[AADHAAR] 🧩 Proof components:')
+                            console.log('  - Nullifier:', pcdData.proof.nullifier)
+                            console.log('  - Proof A:', pcdData.proof.groth16Proof?.pi_a)
+                            console.log('  - Proof B:', pcdData.proof.groth16Proof?.pi_b)
+                            console.log('  - Proof C:', pcdData.proof.groth16Proof?.pi_c)
+                            console.log('  - Public signals:', pcdData.proof.pubSignals)
+                        }
                     }
                 } catch (e) {
-                    console.error('[AADHAAR] Failed to parse PCD:', e)
+                    console.error('[AADHAAR] ❌ Failed to parse PCD:', e)
                 }
 
                 if (nullifier) {
@@ -74,7 +95,9 @@ export function AadhaarVerification() {
                     storeIdentity(nullifier, address, username || undefined)
                     setIdentityStored(true)
                     setAlreadyVerified(true)
-                    console.log('[AADHAAR] 💾 Identity stored for future recovery! Nullifier:', nullifier.slice(0, 20) + '...')
+                    console.log('[AADHAAR] 💾 Identity stored for future recovery!')
+                    console.log('[AADHAAR] 🔐 Nullifier (first 20 chars):', nullifier.slice(0, 20) + '...')
+                    console.log('[AADHAAR] 🏦 Wallet address:', address)
 
                     // Celebrate!
                     confetti({
@@ -172,7 +195,7 @@ export function AadhaarVerification() {
                 <div className="space-y-4">
                     <LogInWithAnonAadhaar
                         nullifierSeed={12345}
-                        signal={address || "stellar-wallet"}
+                        signal={address ? BigInt('0x' + Buffer.from(address).toString('hex').slice(0, 16)).toString() : "1"}
                     />
 
                     <div className="text-xs text-gray-400 text-center">

@@ -259,7 +259,7 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                 <div className="w-full">
                     <LogInWithAnonAadhaar
                         nullifierSeed={12345}
-                        signal="stellar-recovery"
+                        signal="1"
                     />
                 </div>
             )}

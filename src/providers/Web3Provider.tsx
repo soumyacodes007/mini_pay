@@ -12,11 +12,6 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
             <StellarProvider>
                 <AnonAadhaarProvider
                     _useTestAadhaar={true}
-                    _artifactslinks={{
-                        zkey_url: "https://d3dxq5smiosdl4.cloudfront.net/aadhaar-verifier.zkey",
-                        wasm_url: "https://d3dxq5smiosdl4.cloudfront.net/aadhaar-verifier.wasm",
-                        vkey_url: "https://d3dxq5smiosdl4.cloudfront.net/vkey.json"
-                    }}
                 >
                     {children}
                 </AnonAadhaarProvider>
