@@ -1,0 +1,16 @@
+[package]
+name = "wallet-factory"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Aadhaar-linked wallet factory for Invisible Rail"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

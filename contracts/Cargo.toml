@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "wallet_factory",
+    "zk_verifier",
+]
+
+[workspace.dependencies]
+soroban-sdk = "22.0.0"
