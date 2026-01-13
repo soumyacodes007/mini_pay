@@ -1,20 +1,23 @@
 'use client'
 
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useStellar } from '@/providers/StellarProvider'
 import { SendUSDC } from './SendUSDC'
 import { AadhaarVerification } from './AadhaarVerification'
 import { PaymentQR } from './PaymentQR'
 import { QRScanner } from './QRScanner'
 import { AadhaarRecovery } from './AadhaarRecovery'
 import { getUsername } from '@/lib/username-registry'
+import { shortenAddress } from '@/lib/stellar-config'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import confetti from 'canvas-confetti'
 
 export function WalletConnect() {
-    const { address, isConnected, isReconnecting } = useAccount()
-    const { connect, connectors, isPending, error: connectError } = useConnect()
+    const { address, isConnected, isConnecting: isReconnecting } = useAccount()
+    const { connect, isPending, error: connectError } = useConnect()
     const { disconnect } = useDisconnect()
+    const { wallet, refreshBalance, createUSDCTrustline } = useStellar()
+
     const [view, setView] = useState<'send' | 'receive' | 'scan' | 'verify'>('send')
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
     const [scannedRecipient, setScannedRecipient] = useState('')
@@ -27,18 +30,11 @@ export function WalletConnect() {
 
     // Check if user has connected before
     useEffect(() => {
-        const savedWallet = localStorage.getItem('minipay_last_wallet')
+        const savedWallet = localStorage.getItem('invisiblerail_wallet')
         if (savedWallet) {
             setHasExistingWallet(true)
         }
     }, [])
-
-    // Save wallet address when connected
-    useEffect(() => {
-        if (isConnected && address) {
-            localStorage.setItem('minipay_last_wallet', address)
-        }
-    }, [isConnected, address])
 
     // Show connect errors
     useEffect(() => {
@@ -48,38 +44,29 @@ export function WalletConnect() {
         }
     }, [connectError])
 
-    // Coinbase Smart Wallet will be the first connector
-    const coinbaseConnector = connectors[0]
-
     const handleScanResult = (scannedAddress: string, amount: string, username?: string) => {
-        // Store scanned values
         setScannedRecipient(scannedAddress)
         setScannedAmount(amount)
 
-        // Trigger confetti on successful scan
         confetti({
             particleCount: 100,
             spread: 70,
             origin: { y: 0.6 }
         })
 
-        // Navigate to send tab
         setView('send')
     }
 
     const handleRecoverySuccess = (walletAddress: string, username?: string) => {
         console.log('[RECOVERY] Wallet recovered:', walletAddress, 'Username:', username)
         setShowRecovery(false)
-        
-        // Store the recovered wallet info for reference
-        localStorage.setItem('minipay_last_wallet', walletAddress)
+
+        localStorage.setItem('invisiblerail_last_wallet', walletAddress)
         if (username) {
-            localStorage.setItem('minipay_recovered_username', username)
+            localStorage.setItem('invisiblerail_recovered_username', username)
         }
-        
-        // Prompt user to connect with passkey
-        // The wallet address is now known, user needs to authenticate
-        alert(`Wallet found: ${username ? username + '@minipay' : walletAddress.slice(0, 10) + '...'}\n\nClick "Connect with Passkey" to access your wallet.`)
+
+        alert(`Wallet found: ${username ? username + '@rail' : shortenAddress(walletAddress)}\n\nClick "Connect Wallet" to access your wallet.`)
     }
 
     // Show recovery flow
@@ -99,24 +86,92 @@ export function WalletConnect() {
                 <motion.div
                     initial={{ y: -20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className="w-full flex flex-col items-center gap-4 p-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-xl"
+                    className="w-full flex flex-col items-center gap-4 p-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-xl"
                 >
                     <div className="text-white text-center">
                         {username ? (
                             <>
-                                <p className="text-2xl font-bold">{username}@minipay</p>
-                                <p className="font-mono text-xs mt-1 opacity-70">{address.slice(0, 6)}...{address.slice(-4)}</p>
+                                <p className="text-2xl font-bold">{username}@rail</p>
+                                <button
+                                    onClick={async () => {
+                                        await navigator.clipboard.writeText(address)
+                                        alert('Address copied!')
+                                    }}
+                                    className="font-mono text-xs mt-1 opacity-70 hover:opacity-100 flex items-center gap-1 mx-auto"
+                                >
+                                    {shortenAddress(address)} 📋
+                                </button>
                             </>
                         ) : (
                             <>
-                                <p className="text-sm opacity-80">Smart Wallet</p>
-                                <p className="font-mono text-xs mt-1">{address.slice(0, 6)}...{address.slice(-4)}</p>
+                                <p className="text-sm opacity-80">Stellar Wallet</p>
+                                <button
+                                    onClick={async () => {
+                                        await navigator.clipboard.writeText(address)
+                                        alert('Address copied!')
+                                    }}
+                                    className="font-mono text-xs mt-1 hover:opacity-80 flex items-center gap-1 mx-auto"
+                                >
+                                    {shortenAddress(address)} 📋
+                                </button>
                             </>
+                        )}
+                        {/* Balance Display */}
+                        {wallet && (
+                            <div className="mt-3 flex flex-col items-center gap-2">
+                                <div className="flex gap-3">
+                                    <div className="bg-white/20 px-3 py-1 rounded-lg">
+                                        <span className="text-xs opacity-80">USDC</span>
+                                        <span className="ml-2 font-bold">{parseFloat(wallet.usdcBalance).toFixed(2)}</span>
+                                    </div>
+                                    <div className="bg-white/20 px-3 py-1 rounded-lg">
+                                        <span className="text-xs opacity-80">XLM</span>
+                                        <span className="ml-2 font-bold">{parseFloat(wallet.balance).toFixed(0)}</span>
+                                    </div>
+                                    <button
+                                        onClick={() => refreshBalance()}
+                                        className="text-xs opacity-70 hover:opacity-100"
+                                    >
+                                        🔄
+                                    </button>
+                                </div>
+                                {parseFloat(wallet.usdcBalance) === 0 && (
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                // Create trustline automatically
+                                                const success = await createUSDCTrustline()
+
+                                                if (success) {
+                                                    // Try to copy address (may fail after biometric)
+                                                    try {
+                                                        await navigator.clipboard.writeText(address)
+                                                    } catch {
+                                                        // Clipboard failed, address shown in alert
+                                                    }
+
+                                                    // Open Circle faucet
+                                                    window.open('https://faucet.circle.com/', '_blank')
+                                                    alert('✅ Trustline created!\n\n1. Select "Stellar" network\n2. Paste this address:\n' + address + '\n3. Click "Get tokens"\n\nThen come back and tap 🔄!')
+                                                } else {
+                                                    alert('Failed to create trustline. Please try again.')
+                                                }
+                                            } catch (err) {
+                                                console.error(err)
+                                                alert('Error creating trustline')
+                                            }
+                                        }}
+                                        className="text-xs bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full font-semibold hover:bg-yellow-300"
+                                    >
+                                        💰 Get Test USDC
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
                     <button
                         onClick={() => disconnect()}
-                        className="px-6 py-2 bg-white text-purple-600 rounded-full font-semibold hover:scale-105 transition-transform"
+                        className="px-6 py-2 bg-white text-teal-600 rounded-full font-semibold hover:scale-105 transition-transform"
                     >
                         Disconnect
                     </button>
@@ -130,7 +185,7 @@ export function WalletConnect() {
                     className="flex gap-2 flex-wrap justify-center"
                 >
                     {[
-                        { id: 'send', label: '💸 Send', icon: '💸' },
+                        { id: 'send', label: '💸 Pay', icon: '💸' },
                         { id: 'receive', label: '📱 Receive', icon: '📱' },
                         { id: 'scan', label: '📷 Scan', icon: '📷' },
                         { id: 'verify', label: '🆔 Verify', icon: '🆔' },
@@ -139,7 +194,7 @@ export function WalletConnect() {
                             key={tab.id}
                             onClick={() => setView(tab.id as typeof view)}
                             className={`px-6 py-3 rounded-xl font-semibold transition-all ${view === tab.id
-                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg scale-105'
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg scale-105'
                                 : 'bg-white text-gray-600 hover:bg-gray-50'
                                 }`}
                         >
@@ -176,9 +231,9 @@ export function WalletConnect() {
                 <motion.h1
                     initial={{ y: -20 }}
                     animate={{ y: 0 }}
-                    className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+                    className="text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent"
                 >
-                    MiniPay India
+                    Invisible Rail
                 </motion.h1>
                 <motion.p
                     initial={{ y: 20 }}
@@ -188,11 +243,19 @@ export function WalletConnect() {
                 >
                     Pay with crypto as easy as UPI
                 </motion.p>
+                <motion.p
+                    initial={{ y: 20 }}
+                    animate={{ y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="text-sm text-gray-400 mt-1"
+                >
+                    Powered by Stellar
+                </motion.p>
             </div>
 
             {/* Show reconnecting state */}
             {isReconnecting && (
-                <div className="flex items-center gap-2 text-blue-600">
+                <div className="flex items-center gap-2 text-teal-600">
                     <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -202,11 +265,11 @@ export function WalletConnect() {
             )}
 
             <motion.button
-                onClick={() => { setErrorMsg(null); connect({ connector: coinbaseConnector }) }}
+                onClick={() => { setErrorMsg(null); connect() }}
                 disabled={isPending || isReconnecting}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="px-10 py-5 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-xl hover:shadow-2xl transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-10 py-5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold text-xl shadow-xl hover:shadow-2xl transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
                 {isPending ? (
                     <span className="flex items-center gap-2">
@@ -217,14 +280,14 @@ export function WalletConnect() {
                         {hasExistingWallet ? 'Connecting...' : 'Creating Wallet...'}
                     </span>
                 ) : (
-                    hasExistingWallet ? '🔐 Connect with Passkey' : '🔐 Create Wallet with Passkey'
+                    hasExistingWallet ? '🔐 Connect Wallet' : '🚀 Create Wallet'
                 )}
             </motion.button>
 
             {/* Show hint for existing users */}
             {hasExistingWallet && (
                 <p className="text-xs text-gray-400">
-                    Use the same passkey to access your existing wallet
+                    Reconnect to your existing Stellar wallet
                 </p>
             )}
 
@@ -234,7 +297,7 @@ export function WalletConnect() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="text-blue-600 underline text-sm hover:text-blue-800"
+                className="text-teal-600 underline text-sm hover:text-teal-800"
             >
                 🔄 Recover wallet with Aadhaar
             </motion.button>
@@ -243,7 +306,6 @@ export function WalletConnect() {
                 <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl max-w-sm text-sm">
                     <p className="font-bold">❌ Connection Failed</p>
                     <p className="mt-1">{errorMsg}</p>
-                    <p className="mt-2 text-xs text-red-500">Tip: Mobile requires HTTPS. Try using ngrok.</p>
                 </div>
             )}
 
@@ -254,7 +316,7 @@ export function WalletConnect() {
                 className="text-sm text-gray-500 text-center max-w-sm space-y-2"
             >
                 <p>✨ No seed phrases to remember</p>
-                <p>✨ No gas fees to worry about</p>
+                <p>✨ Zero gas fees (sponsored)</p>
                 <p>✨ Recover anytime with Aadhaar</p>
             </motion.div>
         </motion.div>

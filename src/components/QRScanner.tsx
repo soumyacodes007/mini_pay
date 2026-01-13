@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import QrScanner from 'qr-scanner'
 import { getUsername } from '@/lib/username-registry'
+import { parsePaymentUri, isValidStellarAddress, shortenAddress } from '@/lib/stellar-config'
 
 interface QRScannerProps {
     onScan: (address: string, amount: string, username?: string) => void
@@ -24,18 +25,40 @@ export function QRScanner({ onScan }: QRScannerProps) {
                 const scanner = new QrScanner(
                     videoRef.current!,
                     (result) => {
-                        const parts = result.data.split(':')
-                        const address = parts[0]
-                        const amount = parts[1]
-                        const username = parts[2]
-                        
-                        if (address && amount) {
-                            const resolvedUsername = username || getUsername(address) || undefined
-                            setScannedData({ address, amount, username: resolvedUsername })
+                        const data = result.data
+
+                        // Try SEP-0007 format first (web+stellar:pay?...)
+                        const sep0007 = parsePaymentUri(data)
+                        if (sep0007) {
+                            const username = sep0007.memo || getUsername(sep0007.destination)
+                            setScannedData({
+                                address: sep0007.destination,
+                                amount: sep0007.amount,
+                                username: username || undefined
+                            })
                             stopScanning()
-                        } else {
-                            setError('Invalid QR code format')
+                            return
                         }
+
+                        // Try legacy format (address:amount:username)
+                        const parts = data.split(':')
+                        if (parts.length >= 2 && isValidStellarAddress(parts[0])) {
+                            const address = parts[0]
+                            const amount = parts[1]
+                            const username = parts[2] || getUsername(address)
+                            setScannedData({ address, amount, username: username || undefined })
+                            stopScanning()
+                            return
+                        }
+
+                        // Check if it's just a Stellar address
+                        if (isValidStellarAddress(data)) {
+                            setScannedData({ address: data, amount: '0', username: getUsername(data) || undefined })
+                            stopScanning()
+                            return
+                        }
+
+                        setError('Invalid QR code format. Expected Stellar payment URI.')
                     },
                     {
                         returnDetailedScanResult: true,
@@ -96,20 +119,20 @@ export function QRScanner({ onScan }: QRScannerProps) {
                 </div>
 
                 <div className="space-y-4">
-                    <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200">
+                    <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border-2 border-teal-200">
                         <div className="text-center">
                             <p className="text-sm text-gray-500">Pay to</p>
                             {scannedData.username ? (
-                                <p className="text-xl font-bold text-purple-700">{scannedData.username}@minipay</p>
+                                <p className="text-xl font-bold text-teal-700">{scannedData.username}@rail</p>
                             ) : (
                                 <p className="font-mono text-sm text-gray-700">
-                                    {scannedData.address.slice(0, 10)}...{scannedData.address.slice(-8)}
+                                    {shortenAddress(scannedData.address)}
                                 </p>
                             )}
                         </div>
                         <div className="text-center mt-4">
                             <p className="text-sm text-gray-500">Amount</p>
-                            <p className="text-4xl font-bold text-blue-600">{scannedData.amount} USDC</p>
+                            <p className="text-4xl font-bold text-emerald-600">{scannedData.amount} USDC</p>
                         </div>
                     </div>
 
@@ -121,7 +144,7 @@ export function QRScanner({ onScan }: QRScannerProps) {
                     >
                         ✅ Confirm & Pay
                     </motion.button>
-                    
+
                     <button
                         onClick={() => setScannedData(null)}
                         className="w-full py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200"
@@ -137,14 +160,14 @@ export function QRScanner({ onScan }: QRScannerProps) {
         <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-xl mx-auto">
             <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Scan to Pay</h2>
-                <p className="text-sm text-gray-500 mt-1">Scan a payment QR code</p>
+                <p className="text-sm text-gray-500 mt-1">Scan a Stellar payment QR code</p>
             </div>
 
             <div className="space-y-4">
                 {!isScanning ? (
                     <button
                         onClick={startScanning}
-                        className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold rounded-xl hover:scale-105 transition-transform text-lg"
+                        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl hover:scale-105 transition-transform text-lg"
                     >
                         📷 Open Camera
                     </button>
@@ -157,6 +180,11 @@ export function QRScanner({ onScan }: QRScannerProps) {
                         >
                             Cancel
                         </button>
+                        <div className="absolute bottom-2 left-2 right-2 text-center">
+                            <span className="bg-black/50 text-white text-xs px-3 py-1 rounded-full">
+                                Scanning for SEP-0007 QR code...
+                            </span>
+                        </div>
                     </motion.div>
                 )}
 

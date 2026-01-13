@@ -3,8 +3,9 @@
 import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAccount } from 'wagmi'
+import { useAccount } from '@/providers/StellarProvider'
 import { getUsername } from '@/lib/username-registry'
+import { createPaymentUri, shortenAddress } from '@/lib/stellar-config'
 
 export function PaymentQR() {
     const { address } = useAccount()
@@ -14,18 +15,17 @@ export function PaymentQR() {
 
     // Get username if registered
     const username = address ? getUsername(address) : null
-    
-    // Payment request format: address:amount:username (username is optional)
-    // Including username in QR so scanner can display it
-    const paymentData = username 
-        ? `${address}:${amount || '0'}:${username}`
-        : `${address}:${amount || '0'}`
-    
+
+    // Generate SEP-0007 payment URI
+    const paymentUri = address
+        ? createPaymentUri(address, amount || '0', username || undefined)
+        : ''
+
     // Display format
-    const displayId = username ? `${username}@minipay` : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '')
+    const displayId = username ? `${username}@rail` : (address ? shortenAddress(address) : '')
 
     const copyId = async () => {
-        const textToCopy = username ? `${username}@minipay` : address || ''
+        const textToCopy = username ? `${username}@rail` : address || ''
         await navigator.clipboard.writeText(textToCopy)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
@@ -47,25 +47,25 @@ export function PaymentQR() {
                 </p>
             </div>
 
-            {/* MiniPay ID Display with Copy */}
-            <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
+            {/* Rail ID Display with Copy */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border-2 border-teal-200">
                 <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                        <p className="text-xs text-gray-500">Your MiniPay ID</p>
-                        <p className={`font-semibold ${username ? 'text-purple-700 text-lg' : 'font-mono text-sm text-gray-700'}`}>
+                        <p className="text-xs text-gray-500">Your Rail ID</p>
+                        <p className={`font-semibold ${username ? 'text-teal-700 text-lg' : 'font-mono text-sm text-gray-700'}`}>
                             {displayId}
                         </p>
                     </div>
                     <button
                         onClick={copyId}
-                        className="px-4 py-2 bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors flex-shrink-0"
+                        className="px-4 py-2 bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-sm font-medium hover:bg-teal-200 transition-colors flex-shrink-0"
                     >
                         {copied ? '✅ Copied!' : '📋 Copy'}
                     </button>
                 </div>
                 {!username && (
                     <p className="text-xs text-orange-600 mt-2">
-                        💡 Go to Send tab to create your MiniPay ID
+                        💡 Go to Pay tab to create your @rail username
                     </p>
                 )}
             </div>
@@ -86,7 +86,7 @@ export function PaymentQR() {
                         placeholder="0.00"
                         step="0.01"
                         min="0"
-                        className="w-full px-4 py-4 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none transition-colors text-2xl text-center font-bold text-gray-800 placeholder-gray-300"
+                        className="w-full px-4 py-4 rounded-xl border-2 border-gray-200 focus:border-teal-500 focus:outline-none transition-colors text-2xl text-center font-bold text-gray-800 placeholder-gray-300"
                         style={{ color: '#1f2937' }}
                     />
                 </div>
@@ -96,7 +96,7 @@ export function PaymentQR() {
                     <button
                         onClick={handleGenerateQR}
                         disabled={!amount || parseFloat(amount) <= 0}
-                        className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold rounded-xl hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed text-lg"
+                        className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed text-lg"
                     >
                         📱 Generate Payment QR
                     </button>
@@ -116,32 +116,39 @@ export function PaymentQR() {
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                            className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200"
+                            className="p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl border-2 border-teal-200"
                         >
                             <div className="bg-white p-4 rounded-lg flex justify-center">
                                 <QRCodeSVG
-                                    value={paymentData}
+                                    value={paymentUri}
                                     size={200}
                                     level="H"
                                     includeMargin={true}
                                 />
                             </div>
-                            
+
                             {/* Amount Display */}
                             <div className="text-center mt-4">
                                 <p className="text-sm text-gray-500">Request Amount</p>
-                                <p className="text-3xl font-bold text-purple-600">{amount} USDC</p>
+                                <p className="text-3xl font-bold text-teal-600">{amount} USDC</p>
                                 {username && (
                                     <p className="text-sm text-gray-600 mt-1">
-                                        Pay to: <span className="font-semibold">{username}@minipay</span>
+                                        Pay to: <span className="font-semibold">{username}@rail</span>
                                     </p>
                                 )}
                             </div>
-                            
+
                             {/* Instructions */}
                             <p className="text-center text-xs text-gray-400 mt-3">
                                 Ask sender to scan this QR code
                             </p>
+
+                            {/* SEP-0007 Badge */}
+                            <div className="mt-3 flex justify-center">
+                                <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-full">
+                                    SEP-0007 Compatible
+                                </span>
+                            </div>
                         </motion.div>
                     )}
                 </AnimatePresence>

@@ -2,20 +2,22 @@
 
 // Identity storage for Aadhaar-based wallet recovery
 // Uses both localStorage (for current device) and a simulated "backend" (for cross-device)
-// In production, this would be on-chain or in a secure backend
+// In production, this would be on-chain via Soroban contracts
 
-const IDENTITY_KEY = 'minipay_aadhaar_identity'
-const GLOBAL_REGISTRY_KEY = 'minipay_global_identity_registry'
+import { isValidStellarAddress } from './stellar-config'
+
+const IDENTITY_KEY = 'invisiblerail_aadhaar_identity'
+const GLOBAL_REGISTRY_KEY = 'invisiblerail_global_identity_registry'
 
 interface StoredIdentity {
     nullifier: string
-    walletAddress: string
+    walletAddress: string  // Stellar G... address
     verifiedAt: string
     username?: string
 }
 
 // Simulated "backend" storage - persists in localStorage but separate from device-specific data
-// In production, this would be an API call to your backend or on-chain storage
+// In production, this would query Soroban contracts or Mercury indexer
 function getGlobalRegistry(): Record<string, StoredIdentity> {
     try {
         const stored = localStorage.getItem(GLOBAL_REGISTRY_KEY)
@@ -32,25 +34,31 @@ function saveGlobalRegistry(registry: Record<string, StoredIdentity>): void {
 
 // Store identity - saves to both local and "global" registry
 export function storeIdentity(nullifier: string, walletAddress: string, username?: string): void {
+    // Validate Stellar address format
+    if (!isValidStellarAddress(walletAddress)) {
+        console.error('[IDENTITY] Invalid Stellar address format:', walletAddress)
+        return
+    }
+
     const identity: StoredIdentity = {
         nullifier,
         walletAddress,
         verifiedAt: new Date().toISOString(),
         username,
     }
-    
+
     // Save to local storage (current device)
     localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity))
-    
+
     // Save to "global" registry (simulates backend/on-chain)
     const registry = getGlobalRegistry()
     registry[nullifier] = identity
     saveGlobalRegistry(registry)
-    
-    console.log('[IDENTITY] ✅ Stored identity for recovery:', { 
-        nullifier: nullifier.slice(0, 20) + '...', 
-        walletAddress: walletAddress.slice(0, 10) + '...',
-        username 
+
+    console.log('[IDENTITY] ✅ Stored identity for recovery:', {
+        nullifier: nullifier.slice(0, 20) + '...',
+        walletAddress: walletAddress.slice(0, 8) + '...' + walletAddress.slice(-4),
+        username
     })
 }
 
@@ -71,10 +79,10 @@ export function matchIdentity(nullifier: string): { matched: boolean; walletAddr
     // First check global registry (simulates backend lookup)
     const registry = getGlobalRegistry()
     const globalMatch = registry[nullifier]
-    
+
     if (globalMatch) {
         console.log('[IDENTITY] ✅ Found in global registry:', {
-            walletAddress: globalMatch.walletAddress.slice(0, 10) + '...',
+            walletAddress: globalMatch.walletAddress.slice(0, 8) + '...' + globalMatch.walletAddress.slice(-4),
             username: globalMatch.username
         })
         return {
@@ -83,7 +91,7 @@ export function matchIdentity(nullifier: string): { matched: boolean; walletAddr
             username: globalMatch.username,
         }
     }
-    
+
     // Fallback to local storage
     const local = getStoredIdentity()
     if (local && local.nullifier === nullifier) {

@@ -4,6 +4,7 @@ import { LogInWithAnonAadhaar, useAnonAadhaar } from '@anon-aadhaar/react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { matchIdentity, hasAnyStoredIdentity, getAllIdentities } from '@/lib/identity-storage'
+import { shortenAddress } from '@/lib/stellar-config'
 import confetti from 'canvas-confetti'
 
 interface RecoveryProps {
@@ -21,14 +22,14 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
     // Check if any identities exist on mount
     useEffect(() => {
         setHasIdentities(hasAnyStoredIdentity())
-        
+
         // Debug: Log all stored identities
         const identities = getAllIdentities()
         console.log('[RECOVERY] Stored identities:', identities.length)
         identities.forEach((id, i) => {
             console.log(`[RECOVERY] Identity ${i}:`, {
                 nullifier: id.nullifier.slice(0, 20) + '...',
-                wallet: id.walletAddress.slice(0, 10) + '...',
+                wallet: shortenAddress(id.walletAddress),
                 username: id.username
             })
         })
@@ -81,7 +82,7 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
 
             if (result.matched && result.walletAddress) {
                 console.log('[RECOVERY] 🎉 Identity matched!', {
-                    wallet: result.walletAddress,
+                    wallet: shortenAddress(result.walletAddress),
                     username: result.username
                 })
                 setRecoveredAddress(result.walletAddress)
@@ -128,9 +129,9 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                 <div className="p-4 bg-green-50 border-2 border-green-500 rounded-xl w-full">
                     {recoveredUsername ? (
                         <>
-                            <p className="text-sm text-gray-500">Your MiniPay ID</p>
+                            <p className="text-sm text-gray-500">Your Rail ID</p>
                             <p className="text-2xl font-bold text-green-700">
-                                {recoveredUsername}@minipay
+                                {recoveredUsername}@rail
                             </p>
                         </>
                     ) : (
@@ -156,11 +157,11 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                         whileTap={{ scale: 0.98 }}
                         className="w-full px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl"
                     >
-                        🔐 Connect with Passkey
+                        🔐 Access Wallet
                     </motion.button>
-                    
+
                     <p className="text-xs text-center text-gray-400">
-                        You'll need to authenticate with your device's passkey to access the wallet
+                        Your wallet is ready to use on this device
                     </p>
                 </div>
             </motion.div>
@@ -196,7 +197,7 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                 <div className="w-full space-y-3">
                     <button
                         onClick={onCancel}
-                        className="w-full py-3 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors"
+                        className="w-full py-3 bg-teal-500 text-white font-semibold rounded-xl hover:bg-teal-600 transition-colors"
                     >
                         Create New Wallet
                     </button>
@@ -237,7 +238,7 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
             )}
 
             {hasIdentities && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 w-full">
+                <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-sm text-teal-700 w-full">
                     <p className="font-semibold">✅ Linked wallets found</p>
                     <p className="mt-1">
                         Verify your Aadhaar to recover your wallet. Use the same Aadhaar you used during verification.
@@ -247,18 +248,18 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
 
             {recoveryStatus === 'verifying' ? (
                 <div className="flex flex-col items-center gap-4 p-6 w-full">
-                    <svg className="animate-spin h-12 w-12 text-blue-600" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-12 w-12 text-teal-600" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <p className="text-blue-600 font-semibold">Generating ZK proof...</p>
+                    <p className="text-teal-600 font-semibold">Generating ZK proof...</p>
                     <p className="text-sm text-gray-500">Searching for your wallet...</p>
                 </div>
             ) : (
                 <div className="w-full">
                     <LogInWithAnonAadhaar
                         nullifierSeed={12345}
-                        signal="123456789"
+                        signal="stellar-recovery"
                     />
                 </div>
             )}

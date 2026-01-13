@@ -1,13 +1,15 @@
 'use client'
 
 // Simple localStorage-based username registry for demo
-// In production, this would be on-chain or in a backend
+// In production, this would use Stellar Federation Protocol (SEP-0002)
 
-const REGISTRY_KEY = 'minipay_username_registry'
+import { isValidStellarAddress, shortenAddress } from './stellar-config'
+
+const REGISTRY_KEY = 'invisiblerail_username_registry'
 
 interface UsernameEntry {
     username: string
-    address: string
+    address: string  // Stellar G... address
     registeredAt: string
 }
 
@@ -28,86 +30,84 @@ function saveRegistry(registry: Record<string, UsernameEntry>): void {
 }
 
 // Register a username for an address
-export function registerUsername(username: string, address: string): { success: boolean; error?: string } {
+export function registerUsername(username: string, address: string): boolean {
     const cleanUsername = username.toLowerCase().trim()
-    
+
     // Validation
-    if (!cleanUsername) {
-        return { success: false, error: 'Username cannot be empty' }
+    if (!cleanUsername || cleanUsername.length < 3 || cleanUsername.length > 20) {
+        return false
     }
-    
-    if (cleanUsername.length < 3) {
-        return { success: false, error: 'Username must be at least 3 characters' }
-    }
-    
-    if (cleanUsername.length > 20) {
-        return { success: false, error: 'Username must be less than 20 characters' }
-    }
-    
+
     if (!/^[a-z0-9_]+$/.test(cleanUsername)) {
-        return { success: false, error: 'Username can only contain letters, numbers, and underscore' }
+        return false
     }
-    
+
+    // Validate Stellar address
+    if (!isValidStellarAddress(address)) {
+        console.error('[USERNAME] Invalid Stellar address:', address)
+        return false
+    }
+
     const registry = getRegistry()
-    
+
     // Check if username is taken
     if (registry[cleanUsername]) {
-        if (registry[cleanUsername].address.toLowerCase() === address.toLowerCase()) {
-            return { success: true } // Already registered to this address
+        if (registry[cleanUsername].address === address) {
+            return true // Already registered to this address
         }
-        return { success: false, error: 'Username already taken' }
+        return false // Username taken by another address
     }
-    
+
     // Check if address already has a username
     const existingEntry = Object.values(registry).find(
-        entry => entry.address.toLowerCase() === address.toLowerCase()
+        entry => entry.address === address
     )
     if (existingEntry) {
-        return { success: false, error: `You already have username: ${existingEntry.username}` }
+        return false // Address already has a username
     }
-    
+
     // Register
     registry[cleanUsername] = {
         username: cleanUsername,
         address: address,
         registeredAt: new Date().toISOString()
     }
-    
+
     saveRegistry(registry)
-    console.log(`[USERNAME] Registered: ${cleanUsername}@minipay → ${address}`)
-    
-    return { success: true }
+    console.log(`[USERNAME] Registered: ${cleanUsername}@rail → ${shortenAddress(address)}`)
+
+    return true
 }
 
 // Resolve username to address
 export function resolveUsername(username: string): string | null {
-    const cleanUsername = username.toLowerCase().trim().replace('@minipay', '')
+    const cleanUsername = username.toLowerCase().trim().replace('@rail', '')
     const registry = getRegistry()
-    
+
     const entry = registry[cleanUsername]
     if (entry) {
-        console.log(`[USERNAME] Resolved: ${cleanUsername}@minipay → ${entry.address}`)
+        console.log(`[USERNAME] Resolved: ${cleanUsername}@rail → ${shortenAddress(entry.address)}`)
         return entry.address
     }
-    
+
     return null
 }
 
 // Get username for an address
 export function getUsername(address: string): string | null {
     const registry = getRegistry()
-    
+
     const entry = Object.values(registry).find(
-        e => e.address.toLowerCase() === address.toLowerCase()
+        e => e.address === address
     )
-    
+
     return entry ? entry.username : null
 }
 
-// Check if input is a username (not an address)
+// Check if input is a username (not a Stellar address)
 export function isUsername(input: string): boolean {
-    // If it starts with 0x and is 42 chars, it's an address
-    if (input.startsWith('0x') && input.length === 42) {
+    // If it starts with G and is 56 chars, it's a Stellar address
+    if (isValidStellarAddress(input)) {
         return false
     }
     // Otherwise treat as username
@@ -117,15 +117,15 @@ export function isUsername(input: string): boolean {
 // Format display: show username if available, otherwise short address
 export function formatRecipient(addressOrUsername: string): string {
     if (isUsername(addressOrUsername)) {
-        return `${addressOrUsername.replace('@minipay', '')}@minipay`
+        return `${addressOrUsername.replace('@rail', '')}@rail`
     }
-    
+
     // Check if address has a username
     const username = getUsername(addressOrUsername)
     if (username) {
-        return `${username}@minipay`
+        return `${username}@rail`
     }
-    
+
     // Return short address
-    return `${addressOrUsername.slice(0, 6)}...${addressOrUsername.slice(-4)}`
+    return shortenAddress(addressOrUsername)
 }

@@ -1,18 +1,26 @@
 'use client'
 
-import { WagmiProvider } from 'wagmi'
+import { AnonAadhaarProvider } from '@anon-aadhaar/react'
+import { StellarProvider } from './StellarProvider'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { config } from '@/lib/config'
-import { useState, type ReactNode } from 'react'
 
-export function Web3Provider({ children }: { children: ReactNode }) {
-    const [queryClient] = useState(() => new QueryClient())
+const queryClient = new QueryClient()
 
+export function Web3Provider({ children }: { children: React.ReactNode }) {
     return (
-        <WagmiProvider config={config}>
-            <QueryClientProvider client={queryClient}>
-                {children}
-            </QueryClientProvider>
-        </WagmiProvider>
+        <QueryClientProvider client={queryClient}>
+            <StellarProvider>
+                <AnonAadhaarProvider
+                    _useTestAadhaar={true}
+                    _artifactslinks={{
+                        zkey_url: "https://d3dxq5smiosdl4.cloudfront.net/aadhaar-verifier.zkey",
+                        wasm_url: "https://d3dxq5smiosdl4.cloudfront.net/aadhaar-verifier.wasm",
+                        vkey_url: "https://d3dxq5smiosdl4.cloudfront.net/vkey.json"
+                    }}
+                >
+                    {children}
+                </AnonAadhaarProvider>
+            </StellarProvider>
+        </QueryClientProvider>
     )
 }

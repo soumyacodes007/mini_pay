@@ -3,9 +3,10 @@
 import { LogInWithAnonAadhaar, useAnonAadhaar } from '@anon-aadhaar/react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount } from '@/providers/StellarProvider'
 import { storeIdentity, getStoredIdentity } from '@/lib/identity-storage'
 import { getUsername } from '@/lib/username-registry'
+import { shortenAddress } from '@/lib/stellar-config'
 import confetti from 'canvas-confetti'
 
 export function AadhaarVerification() {
@@ -18,7 +19,7 @@ export function AadhaarVerification() {
     useEffect(() => {
         if (address) {
             const existing = getStoredIdentity()
-            if (existing && existing.walletAddress.toLowerCase() === address.toLowerCase()) {
+            if (existing && existing.walletAddress === address) {
                 setAlreadyVerified(true)
                 setIdentityStored(true)
             }
@@ -68,7 +69,7 @@ export function AadhaarVerification() {
                 if (nullifier) {
                     // Get username if registered
                     const username = getUsername(address)
-                    
+
                     // Store identity with username
                     storeIdentity(nullifier, address, username || undefined)
                     setIdentityStored(true)
@@ -91,7 +92,7 @@ export function AadhaarVerification() {
     // Show verified state
     if (anonAadhaar.status === 'logged-in' || alreadyVerified) {
         const username = address ? getUsername(address) : null
-        
+
         return (
             <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
@@ -105,24 +106,29 @@ export function AadhaarVerification() {
                         <p className="text-sm text-green-600">Unique identity confirmed via ZK proof</p>
                     </div>
                 </div>
-                
+
                 <div className="p-4 bg-green-100 rounded-lg text-sm text-green-700 space-y-2">
                     <p className="font-semibold">🔐 Recovery Enabled</p>
                     <p className="text-xs">
-                        Your wallet is now linked to your Aadhaar identity. 
+                        Your wallet is now linked to your Aadhaar identity.
                         If you ever lose access, you can recover it by verifying your Aadhaar again.
                     </p>
                     {username && (
                         <p className="text-xs mt-2">
-                            <span className="font-medium">Linked MiniPay ID:</span> {username}@minipay
+                            <span className="font-medium">Linked Rail ID:</span> {username}@rail
+                        </p>
+                    )}
+                    {address && (
+                        <p className="text-xs mt-1 opacity-70">
+                            <span className="font-medium">Wallet:</span> {shortenAddress(address)}
                         </p>
                     )}
                 </div>
 
                 <div className="mt-4 p-3 bg-white rounded-lg border border-green-200">
                     <p className="text-xs text-gray-600 text-center">
-                        💡 <span className="font-medium">How recovery works:</span> Your Aadhaar generates a unique 
-                        cryptographic identifier (nullifier) that's linked to this wallet. 
+                        💡 <span className="font-medium">How recovery works:</span> Your Aadhaar generates a unique
+                        cryptographic identifier (nullifier) that's linked to this wallet.
                         Same Aadhaar = Same identifier = Wallet recovered!
                     </p>
                 </div>
@@ -140,9 +146,9 @@ export function AadhaarVerification() {
             </div>
 
             {/* Why verify section */}
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800 font-medium">🛡️ Why verify?</p>
-                <ul className="text-xs text-blue-700 mt-1 space-y-1">
+            <div className="mb-4 p-3 bg-teal-50 rounded-lg border border-teal-200">
+                <p className="text-sm text-teal-800 font-medium">🛡️ Why verify?</p>
+                <ul className="text-xs text-teal-700 mt-1 space-y-1">
                     <li>• Recover wallet if you lose your phone</li>
                     <li>• No seed phrase to remember</li>
                     <li>• Your Aadhaar data stays private (ZK proof)</li>
@@ -150,14 +156,14 @@ export function AadhaarVerification() {
             </div>
 
             {anonAadhaar.status === 'logging-in' && (
-                <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-xl text-center">
+                <div className="p-6 bg-teal-50 border-2 border-teal-200 rounded-xl text-center">
                     <div className="flex flex-col items-center gap-3">
-                        <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-8 w-8 text-teal-600" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        <p className="text-blue-800 font-semibold">Generating ZK Proof...</p>
-                        <p className="text-sm text-blue-600">This may take 30-60 seconds</p>
+                        <p className="text-teal-800 font-semibold">Generating ZK Proof...</p>
+                        <p className="text-sm text-teal-600">This may take 30-60 seconds</p>
                     </div>
                 </div>
             )}
@@ -166,7 +172,7 @@ export function AadhaarVerification() {
                 <div className="space-y-4">
                     <LogInWithAnonAadhaar
                         nullifierSeed={12345}
-                        signal="123456789"
+                        signal={address || "stellar-wallet"}
                     />
 
                     <div className="text-xs text-gray-400 text-center">
