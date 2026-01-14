@@ -480,7 +480,7 @@ export function MainWallet({
                                 >
                                     <div className="p-4 bg-white rounded-2xl shadow-lg">
                                         <QRCodeSVG
-                                            value={`stellar:${address}?amount=${receiveAmount}`}
+                                            value={`${address}:${receiveAmount}`}
                                             size={180}
                                             level="H"
                                         />
