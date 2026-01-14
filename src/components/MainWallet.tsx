@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { TransactionHistory } from './TransactionHistory'
+import { ProfilePage } from './ProfilePage'
 
 interface MainWalletProps {
     address: string
@@ -34,12 +35,26 @@ export function MainWallet({
     const [showSendModal, setShowSendModal] = useState(false)
     const [showReceiveModal, setShowReceiveModal] = useState(false)
     const [showHistory, setShowHistory] = useState(false)
+    const [showProfile, setShowProfile] = useState(false)
     const [sendRecipient, setSendRecipient] = useState('')
     const [sendAmount, setSendAmount] = useState('')
     const [receiveAmount, setReceiveAmount] = useState('')
 
     const displayName = username ? `${username}@minipay` : address.slice(0, 8) + '...' + address.slice(-4)
     const balanceNum = parseFloat(usdcBalance)
+
+    // Show profile page
+    if (showProfile) {
+        return (
+            <ProfilePage
+                address={address}
+                username={username}
+                usdcBalance={usdcBalance}
+                xlmBalance={xlmBalance}
+                onBack={() => setShowProfile(false)}
+            />
+        )
+    }
 
     // Show transaction history
     if (showHistory) {
@@ -65,6 +80,7 @@ export function MainWallet({
             <div className="flex items-center justify-between p-4 relative z-50">
                 {/* Profile - Left */}
                 <motion.button
+                    onClick={() => setShowProfile(true)}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-full flex items-center justify-center shadow-lg"
