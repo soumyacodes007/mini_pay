@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import { TransactionHistory } from './TransactionHistory'
 
 interface MainWalletProps {
     address: string
@@ -32,12 +33,18 @@ export function MainWallet({
     const [showSettings, setShowSettings] = useState(false)
     const [showSendModal, setShowSendModal] = useState(false)
     const [showReceiveModal, setShowReceiveModal] = useState(false)
+    const [showHistory, setShowHistory] = useState(false)
     const [sendRecipient, setSendRecipient] = useState('')
     const [sendAmount, setSendAmount] = useState('')
     const [receiveAmount, setReceiveAmount] = useState('')
 
     const displayName = username ? `${username}@minipay` : address.slice(0, 8) + '...' + address.slice(-4)
     const balanceNum = parseFloat(usdcBalance)
+
+    // Show transaction history
+    if (showHistory) {
+        return <TransactionHistory walletAddress={address} onBack={() => setShowHistory(false)} />
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 relative">
@@ -232,7 +239,7 @@ export function MainWallet({
 
                     {/* History */}
                     <button
-                        onClick={() => alert('Transaction history coming soon!')}
+                        onClick={() => setShowHistory(true)}
                         className="flex flex-col items-center gap-2 p-4 bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow"
                     >
                         <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center">
