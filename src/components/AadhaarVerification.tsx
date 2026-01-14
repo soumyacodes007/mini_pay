@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useAccount } from '@/providers/StellarProvider'
 import { storeIdentity, getStoredIdentity } from '@/lib/identity-storage'
+import { registerIdentityOnBase } from '@/lib/base-identity'
 import { getUsername } from '@/lib/username-registry'
 import { shortenAddress } from '@/lib/stellar-config'
 import confetti from 'canvas-confetti'
@@ -98,6 +99,25 @@ export function AadhaarVerification() {
                     console.log('[AADHAAR] 💾 Identity stored for future recovery!')
                     console.log('[AADHAAR] 🔐 Nullifier (first 20 chars):', nullifier.slice(0, 20) + '...')
                     console.log('[AADHAAR] 🏦 Wallet address:', address)
+
+                    // For hackathon demo: Local storage recovery is the primary method
+                    // On-chain registration is optional (requires contract initialization)
+                    // The ZK proof verification happens client-side via Anon Aadhaar
+                    console.log('[AADHAAR] ✅ Recovery enabled via local storage!')
+                    
+                    // Register on Base (or localStorage fallback)
+                    registerIdentityOnBase(nullifier, address, username || undefined)
+                        .then((result) => {
+                            if (result.success) {
+                                console.log('[AADHAAR] ✅ Identity registered on Base!')
+                                if (result.txHash) {
+                                    console.log('[AADHAAR] 📜 Tx:', result.txHash)
+                                }
+                            }
+                        })
+                        .catch((err) => {
+                            console.log('[AADHAAR] ℹ️ Base registration skipped:', err.message)
+                        })
 
                     // Celebrate!
                     confetti({

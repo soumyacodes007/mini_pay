@@ -61,12 +61,27 @@ export function WalletConnect() {
         console.log('[RECOVERY] Wallet recovered:', walletAddress, 'Username:', username)
         setShowRecovery(false)
 
+        // Save recovered wallet to localStorage (same format as connect)
+        const walletData = {
+            publicKey: walletAddress,
+            credentialId: null // Recovery doesn't restore passkey, but wallet address works
+        }
+        localStorage.setItem('invisiblerail_wallet', JSON.stringify(walletData))
         localStorage.setItem('invisiblerail_last_wallet', walletAddress)
+
         if (username) {
             localStorage.setItem('invisiblerail_recovered_username', username)
         }
 
-        alert(`Wallet found: ${username ? username + '@rail' : shortenAddress(walletAddress)}\n\nClick "Connect Wallet" to access your wallet.`)
+        // Celebrate!
+        confetti({
+            particleCount: 100,
+            spread: 70,
+            origin: { y: 0.6 }
+        })
+
+        // Reload page to pick up the restored wallet
+        window.location.reload()
     }
 
     // Show recovery flow

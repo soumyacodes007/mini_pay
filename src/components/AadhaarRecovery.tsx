@@ -4,6 +4,7 @@ import { LogInWithAnonAadhaar, useAnonAadhaar } from '@anon-aadhaar/react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { matchIdentity, hasAnyStoredIdentity, getAllIdentities } from '@/lib/identity-storage'
+import { recoverIdentityFromBase, getAllRegisteredIdentities } from '@/lib/base-identity'
 import { shortenAddress } from '@/lib/stellar-config'
 import confetti from 'canvas-confetti'
 
@@ -36,70 +37,97 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
     }, [])
 
     useEffect(() => {
-        console.log('[RECOVERY] Aadhaar status:', anonAadhaar.status)
+        const handleRecovery = async () => {
+            console.log('[RECOVERY] Aadhaar status:', anonAadhaar.status)
 
-        if (anonAadhaar.status === 'logging-in') {
-            setRecoveryStatus('verifying')
-            console.log('[RECOVERY] 🔄 Verifying Aadhaar for recovery...')
-        }
-
-        if (anonAadhaar.status === 'logged-in') {
-            console.log('[RECOVERY] ✅ Aadhaar verified, checking identity match...')
-
-            // Extract nullifier from proof
-            const proofs = (anonAadhaar as any).anonAadhaarProofs || (anonAadhaar as any).anonAadhaarProof
-
-            let proofWrapper: any = null
-            if (Array.isArray(proofs)) {
-                proofWrapper = proofs[0]
-            } else if (proofs && typeof proofs === 'object') {
-                const values = Object.values(proofs)
-                proofWrapper = values[0]
+            if (anonAadhaar.status === 'logging-in') {
+                setRecoveryStatus('verifying')
+                console.log('[RECOVERY] 🔄 Verifying Aadhaar for recovery...')
             }
 
-            let nullifier = ''
-            try {
-                if (proofWrapper?.pcd) {
-                    const pcdData = JSON.parse(proofWrapper.pcd)
-                    nullifier = pcdData?.proof?.nullifier?.toString() || ''
-                } else {
-                    nullifier = proofWrapper?.proof?.nullifier?.toString() || ''
+            if (anonAadhaar.status === 'logged-in') {
+                console.log('[RECOVERY] ✅ Aadhaar verified, checking identity match...')
+
+                // Extract nullifier from proof
+                const proofs = (anonAadhaar as any).anonAadhaarProofs || (anonAadhaar as any).anonAadhaarProof
+
+                let proofWrapper: any = null
+                if (Array.isArray(proofs)) {
+                    proofWrapper = proofs[0]
+                } else if (proofs && typeof proofs === 'object') {
+                    const values = Object.values(proofs)
+                    proofWrapper = values[0]
                 }
-            } catch (e) {
-                console.error('[RECOVERY] Failed to parse PCD:', e)
-            }
 
-            console.log('[RECOVERY] Nullifier:', nullifier ? nullifier.slice(0, 30) + '...' : 'EMPTY')
+                let nullifier = ''
+                try {
+                    if (proofWrapper?.pcd) {
+                        const pcdData = JSON.parse(proofWrapper.pcd)
+                        nullifier = pcdData?.proof?.nullifier?.toString() || ''
+                    } else {
+                        nullifier = proofWrapper?.proof?.nullifier?.toString() || ''
+                    }
+                } catch (e) {
+                    console.error('[RECOVERY] Failed to parse PCD:', e)
+                }
 
-            if (!nullifier) {
-                console.log('[RECOVERY] ❌ No nullifier found in proof')
-                setRecoveryStatus('not-found')
-                return
-            }
+                console.log('[RECOVERY] Nullifier:', nullifier ? nullifier.slice(0, 30) + '...' : 'EMPTY')
 
-            // Try to match with stored identity
-            const result = matchIdentity(nullifier)
+                if (!nullifier) {
+                    console.log('[RECOVERY] ❌ No nullifier found in proof')
+                    setRecoveryStatus('not-found')
+                    return
+                }
 
-            if (result.matched && result.walletAddress) {
-                console.log('[RECOVERY] 🎉 Identity matched!', {
-                    wallet: shortenAddress(result.walletAddress),
-                    username: result.username
-                })
-                setRecoveredAddress(result.walletAddress)
-                setRecoveredUsername(result.username || null)
-                setRecoveryStatus('matched')
+                // Try to recover from Base first, then fallback to local storage
+                console.log('[RECOVERY] 🔍 Checking Base registry...')
 
-                // Celebrate!
-                confetti({
-                    particleCount: 150,
-                    spread: 100,
-                    origin: { y: 0.5 }
-                })
-            } else {
-                console.log('[RECOVERY] ❌ No matching identity found')
-                setRecoveryStatus('not-found')
+                const baseResult = await recoverIdentityFromBase(nullifier)
+
+                if (baseResult.found && baseResult.stellarAddress) {
+                    console.log('[RECOVERY] 🎉 Found on Base!', {
+                        wallet: shortenAddress(baseResult.stellarAddress),
+                        username: baseResult.username
+                    })
+                    setRecoveredAddress(baseResult.stellarAddress)
+                    setRecoveredUsername(baseResult.username || null)
+                    setRecoveryStatus('matched')
+
+                    // Celebrate!
+                    confetti({
+                        particleCount: 150,
+                        spread: 100,
+                        origin: { y: 0.5 }
+                    })
+                    return
+                }
+
+                // Fallback to local storage
+                const result = matchIdentity(nullifier)
+
+                if (result.matched && result.walletAddress) {
+                    console.log('[RECOVERY] 🎉 Identity matched (local)!', {
+                        wallet: shortenAddress(result.walletAddress),
+                        username: result.username
+                    })
+                    setRecoveredAddress(result.walletAddress)
+                    setRecoveredUsername(result.username || null)
+                    setRecoveryStatus('matched')
+
+                    // Celebrate!
+                    confetti({
+                        particleCount: 150,
+                        spread: 100,
+                        origin: { y: 0.5 }
+                    })
+                } else {
+                    console.log('[RECOVERY] ❌ No matching identity found')
+                    setRecoveryStatus('not-found')
+                }
             }
         }
+
+        handleRecovery()
     }, [anonAadhaar])
 
     // Success state

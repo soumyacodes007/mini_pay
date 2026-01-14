@@ -20,12 +20,11 @@ export const USDC_ASSET = new Asset(
     'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5' // Circle USDC issuer on testnet
 )
 
-// Soroban Contract Addresses (to be deployed)
-export const CONTRACTS = {
-    aadhaarWalletFactory: '', // Will be set after deployment
-    zkVerifier: '',           // Will be set after deployment
-    paymentSponsor: ''        // Will be set after deployment
-} as const
+// Soroban Contract Addresses (kept for reference, identity now on Base)
+// export const CONTRACTS = {
+//     walletFactory: 'CC4CG6Q4UPOHY6ATNOVEK7ZLY5YZL74FZVA4FCDMZY47UMJSMFLCPEG5',
+//     zkVerifier: 'CATK34GW5MOOUS4LKER6Y7M35YWQPHG2JBUVIHFLHS7NSUGW2OS57YG6',
+// } as const
 
 // App Constants
 export const APP_NAME = 'Invisible Rail'
