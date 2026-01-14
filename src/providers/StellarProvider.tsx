@@ -21,6 +21,7 @@ interface StellarContextType {
     refreshBalance: () => Promise<void>
     signTransaction: (xdr: string) => Promise<string>
     createUSDCTrustline: () => Promise<boolean>
+    sendUSDC: (recipient: string, amount: string) => Promise<boolean>
 }
 
 const StellarContext = createContext<StellarContextType | null>(null)
@@ -174,7 +175,7 @@ export function StellarProvider({ children }: { children: ReactNode }) {
 
             try {
                 await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`)
-            } catch {}
+            } catch { }
             setTimeout(() => refreshBalance(), 2000)
         } catch (err: any) {
             if (err.name === 'NotAllowedError') {
@@ -227,8 +228,53 @@ export function StellarProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const sendUSDC = async (recipient: string, amount: string): Promise<boolean> => {
+        try {
+            console.log('[SEND] Initiating payment:', recipient, amount)
+            const assertion = await tryDiscoverExistingPasskey()
+            if (!assertion) throw new Error('Biometric verification required')
+            const credentialId = assertion.id
+            const kp = deriveKeypairFromCredential(credentialId)
+            const publicKey = kp.publicKey()
+
+            // Validate recipient address
+            if (!isValidStellarAddress(recipient)) {
+                throw new Error('Invalid recipient address')
+            }
+
+            // Load account
+            const account = await horizon.loadAccount(publicKey)
+
+            // Build payment transaction
+            const transaction = new TransactionBuilder(account, {
+                fee: BASE_FEE,
+                networkPassphrase: STELLAR_CONFIG.networkPassphrase
+            })
+                .addOperation(Operation.payment({
+                    destination: recipient,
+                    asset: USDC_ASSET,
+                    amount: amount
+                }))
+                .setTimeout(30)
+                .build()
+
+            // Sign and submit
+            transaction.sign(kp)
+            const result = await horizon.submitTransaction(transaction)
+            console.log('[SEND] Transaction successful:', result.hash)
+
+            // Refresh balance
+            await refreshBalance()
+
+            return true
+        } catch (err: any) {
+            console.error('[SEND] Error:', err.message)
+            throw new Error(err.message || 'Failed to send payment')
+        }
+    }
+
     return (
-        <StellarContext.Provider value={{ wallet, isConnecting, error, connect, disconnect, refreshBalance, signTransaction, createUSDCTrustline }}>
+        <StellarContext.Provider value={{ wallet, isConnecting, error, connect, disconnect, refreshBalance, signTransaction, createUSDCTrustline, sendUSDC }}>
             {children}
         </StellarContext.Provider>
     )

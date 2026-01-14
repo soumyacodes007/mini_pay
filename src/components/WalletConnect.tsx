@@ -9,7 +9,7 @@ import { AadhaarRecovery } from './AadhaarRecovery'
 import { OnboardingFlow } from './OnboardingFlow'
 import { MiniPayIdSetup } from './MiniPayIdSetup'
 import { MainWallet } from './MainWallet'
-import { getUsername, registerUsername } from '@/lib/username-registry'
+import { getUsername, registerUsername, resolveUsername } from '@/lib/username-registry'
 import { shortenAddress } from '@/lib/stellar-config'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
@@ -19,7 +19,7 @@ export function WalletConnect() {
     const { address, isConnected, isConnecting: isReconnecting } = useAccount()
     const { connect, isPending, error: connectError } = useConnect()
     const { disconnect } = useDisconnect()
-    const { wallet, refreshBalance, createUSDCTrustline } = useStellar()
+    const { wallet, refreshBalance, createUSDCTrustline, sendUSDC } = useStellar()
 
     const [view, setView] = useState<'main' | 'send' | 'receive' | 'scan' | 'verify'>('main')
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -56,17 +56,34 @@ export function WalletConnect() {
         }
     }, [isConnected, address, username, isNewUser])
 
-    const handleScanResult = (scannedAddress: string, amount: string, username?: string) => {
-        setScannedRecipient(scannedAddress)
-        setScannedAmount(amount)
+    const handleScanResult = async (scannedAddress: string, amount: string, username?: string) => {
+        try {
+            console.log('[SCAN] Payment scanned:', scannedAddress, amount)
 
-        confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 }
-        })
+            // Send payment first
+            const success = await sendUSDC(scannedAddress, amount)
 
-        setView('send')
+            if (success) {
+                // Show confetti AFTER success
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                })
+
+                // Play success sound
+                const audio = new Audio('/success.mp3')
+                audio.play().catch(e => console.log('Could not play sound:', e))
+
+                // Show success alert
+                alert(`✅ Successfully sent ${amount} USDC to ${username || shortenAddress(scannedAddress)}!`)
+                setView('main')
+            }
+        } catch (err: any) {
+            console.error('[SCAN] Payment failed:', err)
+            alert(`❌ Payment failed: ${err.message}`)
+            setView('main')
+        }
     }
 
     const handleRecoverySuccess = (walletAddress: string, username?: string) => {
@@ -182,10 +199,38 @@ export function WalletConnect() {
                 onDisconnect={disconnect}
                 onVerifyAadhaar={() => setView('verify')}
                 onCreateTrustline={createUSDCTrustline}
-                onSend={(recipient, amount) => {
-                    console.log('[SEND]', recipient, amount, 'USDC')
-                    // TODO: Implement actual send
-                    alert(`Sending ${amount} USDC to ${recipient}`)
+                onSend={async (recipient, amount) => {
+                    try {
+                        console.log('[SEND] Starting payment:', recipient, amount)
+
+                        // Resolve username to address if needed
+                        let recipientAddress = recipient
+                        if (recipient.startsWith('@') || !recipient.startsWith('G')) {
+                            const resolved = resolveUsername(recipient)
+                            if (resolved) {
+                                recipientAddress = resolved
+                                console.log('[SEND] Resolved username:', recipient, '→', recipientAddress)
+                            } else {
+                                alert(`Username ${recipient} not found`)
+                                return
+                            }
+                        }
+
+                        // Send payment
+                        const success = await sendUSDC(recipientAddress, amount)
+                        if (success) {
+                            // Play success sound
+                            const audio = new Audio('/success.mp3')
+                            audio.play().catch(e => console.log('Could not play sound:', e))
+
+                            // Show success alert
+                            alert(`✅ Successfully sent ${amount} USDC!`)
+                            setView('main')
+                        }
+                    } catch (err: any) {
+                        console.error('[SEND] Failed:', err)
+                        alert(`❌ Payment failed: ${err.message}`)
+                    }
                 }}
                 onScan={() => setView('scan')}
             />
