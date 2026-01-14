@@ -193,8 +193,8 @@ export function TransactionHistory({ walletAddress, onBack }: TransactionHistory
                                 <div className="flex items-center gap-4">
                                     {/* Icon */}
                                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${tx.type === 'sent'
-                                            ? 'bg-red-100'
-                                            : 'bg-green-100'
+                                        ? 'bg-red-100'
+                                        : 'bg-green-100'
                                         }`}>
                                         {tx.type === 'sent' ? (
                                             <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -250,8 +250,12 @@ export function TransactionHistory({ walletAddress, onBack }: TransactionHistory
                             exit={{ y: '100%' }}
                             transition={{ type: 'spring', damping: 25 }}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-full max-w-md bg-white rounded-t-3xl overflow-hidden"
+                            className="w-full max-w-md bg-white rounded-t-3xl overflow-visible relative"
                         >
+                            {/* Ticket Cutout Circles */}
+                            <div className="absolute left-0 top-[200px] w-6 h-6 bg-slate-50 rounded-full -translate-x-1/2 z-10" />
+                            <div className="absolute right-0 top-[200px] w-6 h-6 bg-slate-50 rounded-full translate-x-1/2 z-10" />
+
                             {/* Header */}
                             <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-6 text-white">
                                 <div className="flex items-center justify-between mb-4">
@@ -300,17 +304,27 @@ export function TransactionHistory({ walletAddress, onBack }: TransactionHistory
                                     </p>
                                 </div>
 
-                                {/* Savings Badge */}
-                                <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl p-4 text-white">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                {/* Premium Savings Badge */}
+                                <div className="relative overflow-hidden rounded-2xl p-5" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
+                                    {/* Glow effects */}
+                                    <div className="absolute -top-8 -right-8 w-24 h-24 bg-white/20 rounded-full blur-2xl" />
+                                    <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-emerald-300/20 rounded-full blur-xl" />
+
+                                    <div className="relative flex items-center gap-4">
+                                        {/* Glassmorphism icon */}
+                                        <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30 shadow-lg">
+                                            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
                                         </div>
-                                        <div>
-                                            <p className="font-bold">You saved ₹{calculateSavings(parseFloat(selectedTx.amount))}</p>
-                                            <p className="text-sm text-white/80">vs Credit Card Fees</p>
+                                        <div className="flex-1">
+                                            <p className="text-white font-bold text-lg">You saved ₹{calculateSavings(parseFloat(selectedTx.amount))}</p>
+                                            <p className="text-white/90 text-sm">vs Credit Card Fees</p>
+                                        </div>
+                                        <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                            </svg>
                                         </div>
                                     </div>
                                 </div>
