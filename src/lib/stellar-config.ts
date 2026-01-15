@@ -20,6 +20,54 @@ export const USDC_ASSET = new Asset(
     'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5' // Circle USDC issuer on testnet
 )
 
+// USDT Asset on Stellar Testnet
+export const USDT_ASSET = new Asset(
+    'USDT',
+    'GCQTGZQQ5G4PTM2GL7CDIFKUBIPEC52BROAQIAPW53XBRJVN6ZJVTG6V' // USDT issuer on testnet
+)
+
+// Supported tokens configuration
+export interface TokenInfo {
+    asset: Asset
+    symbol: string
+    name: string
+    icon: string
+    color: string
+    decimals: number
+}
+
+export const SUPPORTED_TOKENS: Record<string, TokenInfo> = {
+    XLM: {
+        asset: Asset.native(),
+        symbol: 'XLM',
+        name: 'Stellar Lumens',
+        icon: '⭐',
+        color: 'from-purple-500 to-violet-600',
+        decimals: 7
+    },
+    USDC: {
+        asset: USDC_ASSET,
+        symbol: 'USDC',
+        name: 'USD Coin',
+        icon: '💵',
+        color: 'from-blue-500 to-blue-600',
+        decimals: 7
+    },
+    USDT: {
+        asset: USDT_ASSET,
+        symbol: 'USDT',
+        name: 'Tether USD',
+        icon: '💲',
+        color: 'from-green-500 to-emerald-600',
+        decimals: 7
+    }
+}
+
+// Get token info by asset code
+export function getTokenInfo(assetCode: string): TokenInfo | null {
+    return SUPPORTED_TOKENS[assetCode] || null
+}
+
 // Soroban Contract Addresses (kept for reference, identity now on Base)
 // export const CONTRACTS = {
 //     walletFactory: 'CC4CG6Q4UPOHY6ATNOVEK7ZLY5YZL74FZVA4FCDMZY47UMJSMFLCPEG5',

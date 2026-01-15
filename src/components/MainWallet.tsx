@@ -5,12 +5,17 @@ import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { TransactionHistory } from './TransactionHistory'
 import { ProfilePage } from './ProfilePage'
+import { TokenList } from './TokenList'
+import { BridgeModal } from './BridgeModal'
+import { OnrampModal } from './OnrampModal'
+import { TokenBalances } from '@/providers/StellarProvider'
 
 interface MainWalletProps {
     address: string
     username: string | null
     usdcBalance: string
     xlmBalance: string
+    tokenBalances: TokenBalances
     isAadhaarVerified: boolean
     onDisconnect: () => void
     onVerifyAadhaar: () => void
@@ -24,6 +29,7 @@ export function MainWallet({
     username,
     usdcBalance,
     xlmBalance,
+    tokenBalances,
     isAadhaarVerified,
     onDisconnect,
     onVerifyAadhaar,
@@ -36,6 +42,9 @@ export function MainWallet({
     const [showReceiveModal, setShowReceiveModal] = useState(false)
     const [showHistory, setShowHistory] = useState(false)
     const [showProfile, setShowProfile] = useState(false)
+    const [showBridgeModal, setShowBridgeModal] = useState(false)
+    const [showOnrampModal, setShowOnrampModal] = useState<'buy' | 'sell' | null>(null)
+    const [selectedToken, setSelectedToken] = useState('USDC')
     const [sendRecipient, setSendRecipient] = useState('')
     const [sendAmount, setSendAmount] = useState('')
     const [receiveAmount, setReceiveAmount] = useState('')
@@ -51,6 +60,7 @@ export function MainWallet({
                 username={username}
                 usdcBalance={usdcBalance}
                 xlmBalance={xlmBalance}
+                tokenBalances={tokenBalances}
                 onBack={() => setShowProfile(false)}
             />
         )
@@ -319,36 +329,54 @@ export function MainWallet({
                     </div>
                 </motion.div>
 
-                {/* Cashback Banner - Premium */}
+                {/* Fiat Gateway - Add Money & Cash Out */}
                 <motion.div
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.2 }}
-                    className="mt-6 relative overflow-hidden rounded-2xl p-4 flex items-center gap-4"
-                    style={{ background: 'linear-gradient(135deg, #f97316 0%, #e11d48 100%)' }}
+                    className="mt-6 grid grid-cols-2 gap-3"
                 >
-                    {/* Glow effect */}
-                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/20 rounded-full blur-2xl" />
-                    <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-yellow-300/20 rounded-full blur-xl" />
+                    {/* Add Money Button */}
+                    <button
+                        onClick={() => setShowOnrampModal('buy')}
+                        className="relative overflow-hidden rounded-2xl p-4 text-left"
+                        style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                    >
+                        <div className="absolute -top-6 -right-6 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+                        <div className="relative z-10">
+                            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center mb-2">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </div>
+                            <p className="text-white font-bold text-sm">Add Money</p>
+                            <p className="text-white/70 text-xs">UPI → Wallet</p>
+                        </div>
+                    </button>
 
-                    {/* Glassmorphism icon container */}
-                    <div className="relative w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30 shadow-lg">
-                        <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-
-                    <div className="flex-1 relative z-10">
-                        <p className="text-white font-bold text-lg">Win ₹50 Cashback</p>
-                        <p className="text-white/80 text-sm">On your first scan of the day</p>
-                    </div>
-
-                    <div className="relative z-10 bg-white/20 backdrop-blur-sm rounded-full p-2">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                    </div>
+                    {/* Cash Out Button */}
+                    <button
+                        onClick={() => setShowOnrampModal('sell')}
+                        className="relative overflow-hidden rounded-2xl p-4 text-left"
+                        style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' }}
+                    >
+                        <div className="absolute -top-6 -right-6 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+                        <div className="relative z-10">
+                            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center mb-2">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                            </div>
+                            <p className="text-white font-bold text-sm">Cash Out</p>
+                            <p className="text-white/70 text-xs">Wallet → Bank</p>
+                        </div>
+                    </button>
                 </motion.div>
+
+                {/* Powered by Onramp badge */}
+                <div className="mt-3 flex justify-center">
+                    <span className="text-xs text-slate-400">Powered by Onramp.money</span>
+                </div>
             </div>
 
             {/* Floating Scan Button with Pulse Animation */}
@@ -499,6 +527,23 @@ export function MainWallet({
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Bridge Modal */}
+            {showBridgeModal && (
+                <BridgeModal
+                    onClose={() => setShowBridgeModal(false)}
+                    usdcBalance={usdcBalance}
+                />
+            )}
+
+            {/* Onramp Modal - Add Money / Cash Out */}
+            {showOnrampModal && (
+                <OnrampModal
+                    mode={showOnrampModal}
+                    walletAddress={address}
+                    onClose={() => setShowOnrampModal(null)}
+                />
+            )}
         </div>
     )
 }

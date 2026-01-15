@@ -5,11 +5,12 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { matchIdentity, hasAnyStoredIdentity, getAllIdentities } from '@/lib/identity-storage'
 import { recoverIdentityFromBase, getAllRegisteredIdentities } from '@/lib/base-identity'
+import { downloadVault, checkVaultExists } from '@/lib/vault-service'
 import { shortenAddress } from '@/lib/stellar-config'
 import confetti from 'canvas-confetti'
 
 interface RecoveryProps {
-    onRecoverySuccess: (walletAddress: string, username?: string) => void
+    onRecoverySuccess: (walletAddress: string, username?: string, privateKey?: string) => void
     onCancel: () => void
 }
 
@@ -18,7 +19,10 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
     const [recoveryStatus, setRecoveryStatus] = useState<'idle' | 'verifying' | 'matched' | 'not-found'>('idle')
     const [recoveredAddress, setRecoveredAddress] = useState<string | null>(null)
     const [recoveredUsername, setRecoveredUsername] = useState<string | null>(null)
+    const [recoveredPrivateKey, setRecoveredPrivateKey] = useState<string | null>(null)
+    const [recoveredMiniPayId, setRecoveredMiniPayId] = useState<string | null>(null)
     const [hasIdentities, setHasIdentities] = useState(false)
+    const [hasVault, setHasVault] = useState(false)
 
     // Check if any identities exist on mount
     useEffect(() => {
@@ -79,7 +83,28 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                     return
                 }
 
-                // Try to recover from Base first, then fallback to local storage
+                // NEW: Try to recover from encrypted vault first (true cross-device recovery)
+                console.log('[RECOVERY] 🔐 Attempting vault recovery...')
+                const vaultResult = await downloadVault(nullifier)
+
+                if (vaultResult.success && vaultResult.privateKey) {
+                    console.log('[RECOVERY] 🎉 Vault recovered! Full wallet access restored.')
+                    setRecoveredAddress(vaultResult.stellarAddress || '')
+                    setRecoveredUsername(vaultResult.username || null)
+                    setRecoveredPrivateKey(vaultResult.privateKey)
+                    setRecoveredMiniPayId(vaultResult.miniPayId || null)
+                    setRecoveryStatus('matched')
+                    setHasVault(true)
+
+                    confetti({
+                        particleCount: 150,
+                        spread: 100,
+                        origin: { y: 0.5 }
+                    })
+                    return
+                }
+
+                // Fallback: Try to recover from Base first, then local storage
                 console.log('[RECOVERY] 🔍 Checking Base registry...')
 
                 const baseResult = await recoverIdentityFromBase(nullifier)
@@ -148,14 +173,24 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                 </motion.div>
 
                 <div className="text-center">
-                    <h2 className="text-2xl font-bold text-green-600">Wallet Found!</h2>
+                    <h2 className="text-2xl font-bold text-green-600">Wallet Recovered!</h2>
                     <p className="text-gray-600 mt-2">
-                        Your identity was verified via Aadhaar ZK proof
+                        {hasVault
+                            ? "Full wallet access restored via encrypted backup"
+                            : "Your identity was verified via Aadhaar ZK proof"
+                        }
                     </p>
                 </div>
 
                 <div className="p-4 bg-green-50 border-2 border-green-500 rounded-xl w-full">
-                    {recoveredUsername ? (
+                    {recoveredMiniPayId ? (
+                        <>
+                            <p className="text-sm text-gray-500">Your MiniPay ID</p>
+                            <p className="text-2xl font-bold text-green-700">
+                                {recoveredMiniPayId}@minipay
+                            </p>
+                        </>
+                    ) : recoveredUsername ? (
                         <>
                             <p className="text-sm text-gray-500">Your Rail ID</p>
                             <p className="text-2xl font-bold text-green-700">
@@ -175,12 +210,13 @@ export function AadhaarRecovery({ onRecoverySuccess, onCancel }: RecoveryProps) 
                 <div className="text-sm text-gray-500 text-center space-y-1">
                     <p>✅ No seed phrase needed</p>
                     <p>✅ Your Aadhaar data stayed private</p>
+                    {hasVault && <p>✅ Full signing capability restored</p>}
                     <p>✅ Same wallet, same balance</p>
                 </div>
 
                 <div className="w-full space-y-3">
                     <motion.button
-                        onClick={() => onRecoverySuccess(recoveredAddress, recoveredUsername || undefined)}
+                        onClick={() => onRecoverySuccess(recoveredAddress, recoveredMiniPayId || recoveredUsername || undefined, recoveredPrivateKey || undefined)}
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         className="w-full px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-bold text-lg shadow-xl"

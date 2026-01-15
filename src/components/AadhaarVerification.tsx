@@ -3,18 +3,21 @@
 import { LogInWithAnonAadhaar, useAnonAadhaar } from '@anon-aadhaar/react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { useAccount } from '@/providers/StellarProvider'
+import { useAccount, useStellar } from '@/providers/StellarProvider'
 import { storeIdentity, getStoredIdentity } from '@/lib/identity-storage'
 import { registerIdentityOnBase } from '@/lib/base-identity'
 import { getUsername } from '@/lib/username-registry'
 import { shortenAddress } from '@/lib/stellar-config'
+import { uploadVault } from '@/lib/vault-service'
 import confetti from 'canvas-confetti'
 
 export function AadhaarVerification() {
     const [anonAadhaar] = useAnonAadhaar()
     const { address } = useAccount()
+    const { getPrivateKey } = useStellar()
     const [identityStored, setIdentityStored] = useState(false)
     const [alreadyVerified, setAlreadyVerified] = useState(false)
+    const [vaultUploaded, setVaultUploaded] = useState(false)
 
     // Check if already verified on mount
     useEffect(() => {
@@ -100,11 +103,29 @@ export function AadhaarVerification() {
                     console.log('[AADHAAR] 🔐 Nullifier (first 20 chars):', nullifier.slice(0, 20) + '...')
                     console.log('[AADHAAR] 🏦 Wallet address:', address)
 
+                    // NEW: Upload encrypted vault to cloud
+                    const privateKey = getPrivateKey()
+                    if (privateKey && !vaultUploaded) {
+                        console.log('[AADHAAR] 🔐 Uploading encrypted vault...')
+                        uploadVault(nullifier, privateKey, address, username || undefined)
+                            .then((result) => {
+                                if (result.success) {
+                                    console.log('[AADHAAR] ✅ Encrypted vault uploaded!')
+                                    setVaultUploaded(true)
+                                } else {
+                                    console.log('[AADHAAR] ⚠️ Vault upload failed:', result.error)
+                                }
+                            })
+                            .catch((err) => {
+                                console.log('[AADHAAR] ⚠️ Vault upload error:', err.message)
+                            })
+                    }
+
                     // For hackathon demo: Local storage recovery is the primary method
                     // On-chain registration is optional (requires contract initialization)
                     // The ZK proof verification happens client-side via Anon Aadhaar
                     console.log('[AADHAAR] ✅ Recovery enabled via local storage!')
-                    
+
                     // Register on Base (or localStorage fallback)
                     registerIdentityOnBase(nullifier, address, username || undefined)
                         .then((result) => {

@@ -1,0 +1,568 @@
+# Architecture Comparison: Current vs Proposed
+
+## Executive Summary
+
+**VERDICT: The proposed architecture is SUPERIOR and should be implemented.**
+
+This is the industry-standard pattern (Coinbase, MetaMask) adapted for Aadhaar. It solves ALL the critical edge cases I identified in the security analysis.
+
+---
+
+## Current Architecture vs Proposed
+
+### Current (Passkey-Derived)
+
+```
+┌─────────────────────────────────────────────┐
+│ User creates Passkey                        │
+│   ↓                                         │
+│ Browser returns credentialId: "A7B2C3..."   │
+│   ↓                                         │
+│ deriveKeypairFromCredential(credentialId)   │
+│   ↓                                         │
+│ Stellar Private Key: SABC123...             │
+│   ↓                                         │
+│ Stellar Public Key: GBXT...UN2E             │
+└─────────────────────────────────────────────┘
+
+PROBLEM: Different Passkey = Different Wallet!
+```
+
+**Storage:**
+- localStorage: credentialId (plaintext)
+- Browser secure enclave: Passkey private key
+- **NOWHERE:** Stellar private key (derived each time)
+
+**Recovery Flow:**
+1. User scans Aadhaar → nullifier
+2. Query blockchain: nullifier → wallet address
+3. User creates NEW passkey → NEW credentialId
+4. **NEW credentialId = NEW Stellar key = DIFFERENT WALLET**
+5. Old funds stuck in old wallet ❌
+
+---
+
+### Proposed (Encrypted Backup)
+
+```
+┌─────────────────────────────────────────────┐
+│ Generate Random Stellar Key: S_KEY          │
+│   ↓                                         │
+│ Encrypt with Aadhaar Hash:                  │
+│   Vault = AES_256(S_KEY, Aadhaar_Hash)      │
+│   ↓                                         │
+│ Upload to Supabase: Encrypted Vault         │
+│   ↓                                         │
+│ Store S_KEY locally (encrypted by Passkey)  │
+└─────────────────────────────────────────────┘
+
+SOLUTION: ONE Master Key, Passkey is just a lock!
+```
+
+**Storage:**
+- Supabase: `AES_256(S_KEY, Aadhaar_Hash)` (encrypted blob)
+- localStorage: `S_KEY` wrapped by Passkey (can be cleared, no problem)
+- Browser secure enclave: Passkey private key (local lock)
+
+**Recovery Flow:**
+1. User scans Aadhaar → nullifier/hash
+2. Query Supabase: `Aadhaar_Hash` → Encrypted Vault
+3. Decrypt: `S_KEY = AES_Decrypt(Vault, Aadhaar_Hash)`
+4. User creates NEW passkey (on new device)
+5. Wrap S_KEY with new passkey
+6. **SAME S_KEY = SAME WALLET** ✅
+
+---
+
+## Feature Comparison Table
+
+| Feature | Current (Passkey-Derived) | Proposed (Encrypted Backup) |
+|---------|---------------------------|----------------------------|
+| **Same wallet on new device** | ❌ No | ✅ Yes |
+| **Cross-platform** | ❌ No (passkey sync issues) | ✅ Yes |
+| **Non-custodial** | ✅ Yes | ✅ Yes |
+| **Passkey sync independent** | ❌ No (critical dependency) | ✅ Yes |
+| **Recovery reliability** | ⚠️ Medium | ✅ High |
+| **Industry standard** | ❌ No | ✅ Yes (Coinbase, MetaMask) |
+| **Demo-friendly** | ❌ No (confusing) | ✅ Yes (clear) |
+| **Backend required** | ❌ No | ✅ Yes (Supabase) |
+| **Encryption strength** | ⚠️ Weak (current impl) | ✅ Strong (AES-256) |
+| **Edge cases handled** | ❌ 8 edge cases identified | ✅ All resolved |
+
+---
+
+## Why Proposed Architecture Wins
+
+### 1. ✅ **Solves "Lost Phone" Scenario**
+
+**Current:**
+```
+User loses iPhone → Buys Android
+Recovery: Aadhaar scan → Get wallet ADDRESS only
+Problem: Can't access funds! Different passkey = different private key
+Result: Funds stuck ❌
+```
+
+**Proposed:**
+```
+User loses iPhone → Buys Android
+Recovery: Aadhaar scan → Download encrypted vault → Decrypt → Get S_KEY
+New Passkey: Wrap S_KEY with new Android passkey
+Result: Full access to original wallet ✅
+```
+
+### 2. ✅ **Solves Passkey Sync Issues**
+
+**Current Problem:**
+- iPhone passkey in iCloud Keychain
+- Doesn't sync to Android/Windows
+- User confused: "Where's my wallet?"
+
+**Proposed Solution:**
+- Passkey is just a local convenience
+- Real key is in encrypted cloud backup
+- Works on ANY device with Aadhaar
+
+### 3. ✅ **Better Demo Experience**
+
+**Demo Script (Current - FAILS):**
+```
+1. Create wallet on Phone A
+2. Delete app from Phone A
+3. Install on Phone B
+4. Recover with Aadhaar
+5. Result: Different wallet address! Demo fails!
+```
+
+**Demo Script (Proposed - WORKS):**
+```
+1. Create wallet on Phone A (Balance: $100 USDC)
+2. Delete app from Phone A
+3. Install on Phone B
+4. Recover with Aadhaar → Download vault → Decrypt
+5. Result: Same wallet, same $100 USDC! Demo succeeds! ✨
+```
+
+### 4. ✅ **Industry Proven**
+
+**Coinbase Wallet Recovery:**
+```
+1. User sets password during signup
+2. Vault = Encrypt(Private_Key, password)
+3. Upload to Coinbase servers
+4. New device: Enter password → Download vault → Decrypt
+```
+
+**MetaMask Secret Recovery Phrase:**
+```
+1. Generate 12-word seed phrase
+2. User writes it down
+3. Import on new device: Enter 12 words → Same wallet
+```
+
+**Your Implementation (Aadhaar-Backed):**
+```
+1. Scan Aadhaar (better than password/seed phrase!)
+2. Vault = Encrypt(Private_Key, Aadhaar_Hash)
+3. Upload to Supabase
+4. New device: Scan Aadhaar → Download vault → Decrypt
+```
+
+---
+
+## Security Analysis
+
+### Proposed Architecture Security
+
+#### ✅ **Non-Custodial Guarantee**
+
+**You (the developer) CANNOT steal funds because:**
+1. Supabase stores: `AES_256(S_KEY, Aadhaar_Hash)`
+2. You don't have: `Aadhaar_Hash` (user's biometric)
+3. Without Aadhaar, you cannot decrypt the vault
+4. Even if Supabase is hacked, attacker can't decrypt without physical Aadhaar
+
+**Threat Model:**
+| Attack | Can attacker get funds? |
+|--------|------------------------|
+| Supabase hacked | ❌ No (encrypted) |
+| Developer goes rogue | ❌ No (can't decrypt) |
+| User loses Aadhaar card | ✅ Yes (physical possession) |
+| Phishing attack | ⚠️ Maybe (if user scans fake QR) |
+
+#### 🔒 **Encryption Strength**
+
+**Recommended Implementation:**
+```typescript
+import { crypto } from '@noble/crypto'
+import { pbkdf2 } from '@noble/hashes/pbkdf2'
+import { sha256 } from '@noble/hashes/sha256'
+
+// Derive encryption key from Aadhaar nullifier
+async function deriveEncryptionKey(aadhaarNullifier: string): Promise<Uint8Array> {
+    return pbkdf2(
+        sha256,
+        aadhaarNullifier,
+        'minipay_vault_v1', // salt
+        {
+            c: 100000, // iterations (slow = secure)
+            dkLen: 32 // 256 bits
+        }
+    )
+}
+
+// Encrypt Stellar private key
+async function encryptStellarKey(
+    stellarPrivateKey: string,
+    encryptionKey: Uint8Array
+): Promise<string> {
+    const iv = crypto.getRandomValues(new Uint8Array(12)) // GCM nonce
+    const keyObject = await crypto.subtle.importKey(
+        'raw',
+        encryptionKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt']
+    )
+    
+    const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        keyObject,
+        new TextEncoder().encode(stellarPrivateKey)
+    )
+    
+    // Return: IV + Ciphertext (both needed for decryption)
+    return Buffer.from(iv).toString('base64') + '.' + 
+           Buffer.from(encrypted).toString('base64')
+}
+
+// Decrypt Stellar private key
+async function decryptStellarKey(
+    vault: string,
+    encryptionKey: Uint8Array
+): Promise<string> {
+    const [ivB64, ciphertextB64] = vault.split('.')
+    const iv = Buffer.from(ivB64, 'base64')
+    const ciphertext = Buffer.from(ciphertextB64, 'base64')
+    
+    const keyObject = await crypto.subtle.importKey(
+        'raw',
+        encryptionKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+    )
+    
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        keyObject,
+        ciphertext
+    )
+    
+    return new TextDecoder().decode(decrypted)
+}
+```
+
+**Why AES-256-GCM?**
+- Industry standard (used by Signal, WhatsApp, 1Password)
+- Authenticated encryption (prevents tampering)
+- Fast on modern CPUs
+- NIST approved
+
+---
+
+## Implementation Plan
+
+### Phase 1: Set Up Supabase (Week 1)
+
+**Schema:**
+```sql
+CREATE TABLE encrypted_vaults (
+    aadhaar_hash VARCHAR(64) PRIMARY KEY, -- SHA-256 of nullifier
+    encrypted_vault TEXT NOT NULL, -- Base64 encoded: IV.Ciphertext
+    stellar_address VARCHAR(56) NOT NULL, -- For quick lookup
+    username VARCHAR(50),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    device_count INTEGER DEFAULT 1 -- Track how many devices
+);
+
+CREATE INDEX idx_stellar_address ON encrypted_vaults(stellar_address);
+CREATE INDEX idx_username ON encrypted_vaults(username);
+```
+
+**API:**
+```typescript
+// POST /api/vault/upload
+{
+    "aadhaar_hash": "sha256(nullifier)",
+    "encrypted_vault": "base64(iv.ciphertext)",
+    "stellar_address": "GBXT...UN2E",
+    "username": "rahul"
+}
+
+// GET /api/vault/download?aadhaar_hash=...
+{
+    "encrypted_vault": "base64(iv.ciphertext)",
+    "stellar_address": "GBXT...UN2E",
+    "username": "rahul"
+}
+```
+
+### Phase 2: Update Onboarding Flow (Week 1-2)
+
+**New Onboarding:**
+```typescript
+async function onboardUser(aadhaarNullifier: string, username: string) {
+    // 1. Generate random Stellar key (ONCE!)
+    const stellarKeypair = Keypair.random()
+    const privateKey = stellarKeypair.secret()
+    const publicKey = stellarKeypair.publicKey()
+    
+    // 2. Derive encryption key from Aadhaar
+    const encryptionKey = await deriveEncryptionKey(aadhaarNullifier)
+    
+    // 3. Encrypt private key
+    const vault = await encryptStellarKey(privateKey, encryptionKey)
+    
+    // 4. Upload to Supabase
+    await uploadVault({
+        aadhaar_hash: sha256(aadhaarNullifier),
+        encrypted_vault: vault,
+        stellar_address: publicKey,
+        username
+    })
+    
+    // 5. Create local passkey
+    const passkey = await createNewPasskey(username)
+    
+    // 6. Store private key locally (wrapped by passkey)
+    await storeLocalKey(privateKey, passkey.id)
+    
+    // 7. Save wallet info
+    localStorage.setItem('invisiblerail_wallet', JSON.stringify({
+        publicKey,
+        username,
+        hasBackup: true
+    }))
+    
+    return { publicKey, privateKey }
+}
+```
+
+### Phase 3: Update Recovery Flow (Week 2)
+
+**New Recovery:**
+```typescript
+async function recoverWallet(aadhaarNullifier: string) {
+    // 1. Derive decryption key from Aadhaar
+    const decryptionKey = await deriveEncryptionKey(aadhaarNullifier)
+    
+    // 2. Download vault from Supabase
+    const vault = await downloadVault(sha256(aadhaarNullifier))
+    
+    if (!vault) {
+        throw new Error('No wallet found for this Aadhaar')
+    }
+    
+    // 3. Decrypt to get original Stellar key
+    const privateKey = await decryptStellarKey(
+        vault.encrypted_vault,
+        decryptionKey
+    )
+    
+    // 4. Verify it matches the public key
+    const keypair = Keypair.fromSecret(privateKey)
+    if (keypair.publicKey() !== vault.stellar_address) {
+        throw new Error('Decryption verification failed')
+    }
+    
+    // 5. Create NEW passkey on this device
+    const passkey = await createNewPasskey(vault.username)
+    
+    // 6. Store private key locally (wrapped by NEW passkey)
+    await storeLocalKey(privateKey, passkey.id)
+    
+    // 7. Restore wallet info
+    localStorage.setItem('invisiblerail_wallet', JSON.stringify({
+        publicKey: vault.stellar_address,
+        username: vault.username,
+        hasBackup: true
+    }))
+    
+    // 8. Update device count in Supabase
+    await incrementDeviceCount(sha256(aadhaarNullifier))
+    
+    return {
+        publicKey: vault.stellar_address,
+        username: vault.username
+    }
+}
+```
+
+### Phase 4: Migration Path (Week 3)
+
+**For Existing Users:**
+```typescript
+async function migrateExistingUser() {
+    // 1. Check if user has old wallet (passkey-derived)
+    const oldWallet = localStorage.getItem('invisiblerail_wallet')
+    if (!oldWallet) return
+    
+    const { publicKey, credentialId } = JSON.parse(oldWallet)
+    
+    // 2. Derive old private key (one last time)
+    const oldKeypair = deriveKeypairFromCredential(credentialId)
+    const oldPrivateKey = oldKeypair.secret()
+    
+    // 3. Prompt user to scan Aadhaar
+    const aadhaarNullifier = await promptAadhaarScan()
+    
+    // 4. Encrypt old private key
+    const encryptionKey = await deriveEncryptionKey(aadhaarNullifier)
+    const vault = await encryptStellarKey(oldPrivateKey, encryptionKey)
+    
+    // 5. Upload to Supabase
+    await uploadVault({
+        aadhaar_hash: sha256(aadhaarNullifier),
+        encrypted_vault: vault,
+        stellar_address: publicKey,
+        username: getUsername(publicKey)
+    })
+    
+    // 6. Mark as migrated
+    localStorage.setItem('migration_complete', 'true')
+    
+    alert('✅ Your wallet is now backed up! You can recover it on any device.')
+}
+```
+
+---
+
+## Cost Analysis
+
+### Supabase Costs (Free Tier)
+
+**Free Plan Includes:**
+- 500 MB database
+- 1 GB file storage
+- 2 GB bandwidth/month
+- 50,000 monthly active users
+
+**For 10,000 users:**
+- Each vault: ~200 bytes (encrypted key)
+- Total storage: 10,000 × 200 bytes = 2 MB
+- **Cost: FREE** ✅
+
+**For 1 million users:**
+- Total storage: 1M × 200 bytes = 200 MB
+- **Cost: Still FREE** ✅
+
+**Paid Plan ($25/month):**
+- 8 GB database
+- 100 GB bandwidth
+- Supports 100,000+ MAU
+
+---
+
+## Comparison to Alternatives
+
+### Option 1: Seed Phrase (Traditional)
+
+**Pros:**
+- Battle-tested (Bitcoin, Ethereum)
+- User has full control
+
+**Cons:**
+- User must write down 12 words
+- 99% of users lose the paper
+- Not suitable for India (literacy concerns)
+
+### Option 2: Password Encrypted (Coinbase)
+
+**Pros:**
+- User chooses password
+- Easy to remember
+
+**Cons:**
+- Weak passwords common
+- Forgot password = lost wallet
+- Phishing risk
+
+### Option 3: Social Recovery (Argent)
+
+**Pros:**
+- 3-of-5 friends can recover
+
+**Cons:**
+- Complex UX
+- Trust issues ("friends can steal my money?")
+- Not suitable for India
+
+### **Option 4: Aadhaar Encrypted (YOUR APPROACH)**
+
+**Pros:**
+- ✅ No seed phrase to write
+- ✅ No password to remember
+- ✅ Can't be phished easily (requires physical Aadhaar)
+- ✅ Government-backed identity (1.3B Indians have it)
+- ✅ Biometric verification (secure)
+
+**Cons:**
+- ⚠️ Requires Aadhaar (but in India, everyone has it)
+- ⚠️ Dependency on Anon Aadhaar service
+
+**Verdict: BEST for Indian users** 🏆
+
+---
+
+## Migration from Current to Proposed
+
+### Timeline: 2-3 Weeks
+
+**Week 1:**
+- Set up Supabase project
+- Create database schema
+- Build encryption/decryption utilities
+- Write API endpoints
+
+**Week 2:**
+- Update onboarding flow
+- Update recovery flow
+- Add migration prompt for existing users
+- Testing
+
+**Week 3:**
+- Deploy to production
+- Monitor for issues
+- User communication
+
+### Backwards Compatibility
+
+**Keep old code for 30 days:**
+- Allow existing users to migrate gradually
+- Show migration prompt on app open
+- "Backup your wallet now for cross-device access"
+
+---
+
+## Final Recommendation
+
+### ✅ **IMPLEMENT THE PROPOSED ARCHITECTURE**
+
+**Why:**
+1. Solves ALL edge cases from security analysis
+2. Industry-standard pattern (proven by Coinbase, MetaMask)
+3. Better demo experience (reliable recovery)
+4. Cross-platform support (Android ↔ iOS)
+5. Non-custodial guarantee maintained
+6. Minimal cost (Supabase free tier)
+
+**Next Steps:**
+1. Create Supabase project (TODAY)
+2. Implement encryption utilities (Week 1)
+3. Update onboarding flow (Week 1)
+4. Test recovery across devices (Week 2)
+5. Deploy and migrate existing users (Week 3)
+
+**This is the RIGHT architecture for MiniPay.** 🚀

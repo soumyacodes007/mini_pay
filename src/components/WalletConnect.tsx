@@ -9,17 +9,18 @@ import { AadhaarRecovery } from './AadhaarRecovery'
 import { OnboardingFlow } from './OnboardingFlow'
 import { MiniPayIdSetup } from './MiniPayIdSetup'
 import { MainWallet } from './MainWallet'
-import { getUsername, registerUsername, resolveUsername } from '@/lib/username-registry'
+import { getUsername, registerUsername, resolveUsername, resolveUsernameAsync } from '@/lib/username-registry'
 import { shortenAddress } from '@/lib/stellar-config'
 import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 import confetti from 'canvas-confetti'
+import toast from 'react-hot-toast'
 
 export function WalletConnect() {
     const { address, isConnected, isConnecting: isReconnecting } = useAccount()
     const { connect, isPending, error: connectError } = useConnect()
     const { disconnect } = useDisconnect()
-    const { wallet, refreshBalance, createUSDCTrustline, sendUSDC } = useStellar()
+    const { wallet, refreshBalance, createUSDCTrustline, sendUSDC, connectWithSecret } = useStellar()
 
     const [view, setView] = useState<'main' | 'send' | 'receive' | 'scan' | 'verify'>('main')
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -57,6 +58,8 @@ export function WalletConnect() {
     }, [isConnected, address, username, isNewUser])
 
     const handleScanResult = async (scannedAddress: string, amount: string, username?: string) => {
+        const toastId = toast.loading('💸 Processing payment...')
+
         try {
             console.log('[SCAN] Payment scanned:', scannedAddress, amount)
 
@@ -64,6 +67,9 @@ export function WalletConnect() {
             const success = await sendUSDC(scannedAddress, amount)
 
             if (success) {
+                // Dismiss loading toast
+                toast.dismiss(toastId)
+
                 // Show confetti AFTER success
                 confetti({
                     particleCount: 100,
@@ -75,22 +81,53 @@ export function WalletConnect() {
                 const audio = new Audio('/success.mp3')
                 audio.play().catch(e => console.log('Could not play sound:', e))
 
-                // Show success alert
-                alert(`✅ Successfully sent ${amount} USDC to ${username || shortenAddress(scannedAddress)}!`)
+                // Show success toast
+                toast.success(`🎉 Successfully sent ${amount} USDC to ${username || shortenAddress(scannedAddress)}!`, {
+                    duration: 5000,
+                })
+
                 setView('main')
             }
         } catch (err: any) {
             console.error('[SCAN] Payment failed:', err)
-            alert(`❌ Payment failed: ${err.message}`)
+            toast.dismiss(toastId)
+            toast.error(`❌ Payment failed: ${err.message}`)
             setView('main')
         }
     }
 
-    const handleRecoverySuccess = (walletAddress: string, username?: string) => {
-        console.log('[RECOVERY] Wallet recovered:', walletAddress, 'Username:', username)
+    const handleRecoverySuccess = async (walletAddress: string, username?: string, privateKey?: string) => {
+        console.log('[RECOVERY] Wallet recovered:', walletAddress, 'Username:', username, 'Has Private Key:', !!privateKey)
         setShowRecovery(false)
 
-        // Save recovered wallet to localStorage (same format as connect)
+        // If we have the private key from vault, use connectWithSecret for full wallet access
+        if (privateKey) {
+            try {
+                console.log('[RECOVERY] Using connectWithSecret for full wallet restoration...')
+                await connectWithSecret(privateKey)
+
+                // Register username if provided
+                if (username) {
+                    registerUsername(username, walletAddress)
+                    localStorage.setItem('invisiblerail_recovered_username', username)
+                }
+
+                // Celebrate!
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                })
+
+                toast.success('🎉 Wallet fully restored with signing capability!')
+                return
+            } catch (err) {
+                console.error('[RECOVERY] connectWithSecret failed:', err)
+                toast.error('Failed to restore wallet signing capability')
+            }
+        }
+
+        // Fallback: Save recovered wallet to localStorage (address only, no signing)
         const walletData = {
             publicKey: walletAddress,
             credentialId: null // Recovery doesn't restore passkey, but wallet address works
@@ -129,7 +166,7 @@ export function WalletConnect() {
             <MiniPayIdSetup
                 walletAddress={address}
                 onComplete={(newUsername) => {
-                    registerUsername(address, newUsername)
+                    registerUsername(newUsername, address)
                     setShowMiniPayIdSetup(false)
                     setIsNewUser(false)
                     // Celebrate!
@@ -195,23 +232,28 @@ export function WalletConnect() {
                 username={username}
                 usdcBalance={wallet?.usdcBalance || '0'}
                 xlmBalance={wallet?.balance || '0'}
+                tokenBalances={wallet?.tokenBalances || { XLM: '0', USDC: '0', USDT: '0' }}
                 isAadhaarVerified={isAadhaarVerified}
                 onDisconnect={disconnect}
                 onVerifyAadhaar={() => setView('verify')}
                 onCreateTrustline={createUSDCTrustline}
                 onSend={async (recipient, amount) => {
+                    const toastId = toast.loading('💸 Processing payment...')
+
                     try {
                         console.log('[SEND] Starting payment:', recipient, amount)
 
                         // Resolve username to address if needed
                         let recipientAddress = recipient
                         if (recipient.startsWith('@') || !recipient.startsWith('G')) {
-                            const resolved = resolveUsername(recipient)
+                            // Try async resolution (checks Supabase too)
+                            const resolved = await resolveUsernameAsync(recipient)
                             if (resolved) {
                                 recipientAddress = resolved
                                 console.log('[SEND] Resolved username:', recipient, '→', recipientAddress)
                             } else {
-                                alert(`Username ${recipient} not found`)
+                                toast.dismiss(toastId)
+                                toast.error(`Username ${recipient} not found`)
                                 return
                             }
                         }
@@ -219,17 +261,24 @@ export function WalletConnect() {
                         // Send payment
                         const success = await sendUSDC(recipientAddress, amount)
                         if (success) {
+                            // Dismiss loading toast
+                            toast.dismiss(toastId)
+
                             // Play success sound
                             const audio = new Audio('/success.mp3')
                             audio.play().catch(e => console.log('Could not play sound:', e))
 
-                            // Show success alert
-                            alert(`✅ Successfully sent ${amount} USDC!`)
+                            // Show success toast
+                            toast.success(`🎉 Successfully sent ${amount} USDC!`, {
+                                duration: 5000,
+                            })
+
                             setView('main')
                         }
                     } catch (err: any) {
                         console.error('[SEND] Failed:', err)
-                        alert(`❌ Payment failed: ${err.message}`)
+                        toast.dismiss(toastId)
+                        toast.error(`❌ Payment failed: ${err.message}`)
                     }
                 }}
                 onScan={() => setView('scan')}

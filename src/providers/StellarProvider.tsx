@@ -1,14 +1,20 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { Horizon, Keypair, Networks, TransactionBuilder, BASE_FEE, Operation } from '@stellar/stellar-sdk'
-import { STELLAR_CONFIG, USDC_ASSET, isValidStellarAddress } from '@/lib/stellar-config'
+import { Horizon, Keypair, Networks, TransactionBuilder, BASE_FEE, Operation, Asset } from '@stellar/stellar-sdk'
+import { STELLAR_CONFIG, USDC_ASSET, USDT_ASSET, SUPPORTED_TOKENS, isValidStellarAddress } from '@/lib/stellar-config'
+
+// Token balance map type
+export interface TokenBalances {
+    [symbol: string]: string
+}
 
 interface StellarWallet {
     publicKey: string
     isConnected: boolean
     balance: string
     usdcBalance: string
+    tokenBalances: TokenBalances
     credentialId?: string
 }
 
@@ -22,12 +28,17 @@ interface StellarContextType {
     signTransaction: (xdr: string) => Promise<string>
     createUSDCTrustline: () => Promise<boolean>
     sendUSDC: (recipient: string, amount: string) => Promise<boolean>
+    // New methods for encrypted vault architecture
+    createRandomWallet: () => Promise<{ publicKey: string; privateKey: string }>
+    connectWithSecret: (secret: string) => Promise<void>
+    getPrivateKey: () => string | null
 }
 
 const StellarContext = createContext<StellarContextType | null>(null)
 
 const WALLET_STORAGE_KEY = 'invisiblerail_wallet'
 const CREDENTIAL_STORAGE_KEY = 'invisiblerail_credential'
+const SECRET_STORAGE_KEY = 'invisiblerail_secret' // Encrypted secret stored locally
 
 function deriveKeypairFromCredential(credentialId: string): Keypair {
     const encoder = new TextEncoder()
@@ -60,6 +71,7 @@ export function StellarProvider({ children }: { children: ReactNode }) {
                         isConnected: true,
                         balance: '0',
                         usdcBalance: '0',
+                        tokenBalances: { XLM: '0', USDC: '0', USDT: '0' },
                         credentialId: parsed.credentialId
                     })
                     if (parsed.credentialId) {
@@ -76,16 +88,29 @@ export function StellarProvider({ children }: { children: ReactNode }) {
         if (!wallet?.publicKey) return
         try {
             const account = await horizon.loadAccount(wallet.publicKey)
-            let xlmBalance = '0'
-            let usdcBalance = '0'
+            const newBalances: TokenBalances = { XLM: '0', USDC: '0', USDT: '0' }
+
             for (const balance of account.balances) {
                 if (balance.asset_type === 'native') {
-                    xlmBalance = balance.balance
-                } else if (balance.asset_type === 'credit_alphanum4' && balance.asset_code === 'USDC' && balance.asset_issuer === USDC_ASSET.getIssuer()) {
-                    usdcBalance = balance.balance
+                    newBalances.XLM = balance.balance
+                } else if (balance.asset_type === 'credit_alphanum4') {
+                    // Check USDC
+                    if (balance.asset_code === 'USDC' && balance.asset_issuer === USDC_ASSET.getIssuer()) {
+                        newBalances.USDC = balance.balance
+                    }
+                    // Check USDT
+                    if (balance.asset_code === 'USDT' && balance.asset_issuer === USDT_ASSET.getIssuer()) {
+                        newBalances.USDT = balance.balance
+                    }
                 }
             }
-            setWallet(prev => prev ? { ...prev, balance: xlmBalance, usdcBalance } : null)
+
+            setWallet(prev => prev ? {
+                ...prev,
+                balance: newBalances.XLM,
+                usdcBalance: newBalances.USDC,
+                tokenBalances: newBalances
+            } : null)
         } catch {
             console.log('[STELLAR] Account not funded yet')
         }
@@ -145,7 +170,7 @@ export function StellarProvider({ children }: { children: ReactNode }) {
                     const walletData = JSON.parse(savedWallet)
                     const kp = deriveKeypairFromCredential(credData.id)
                     setKeypair(kp)
-                    setWallet({ publicKey: walletData.publicKey, isConnected: true, balance: '0', usdcBalance: '0', credentialId: credData.id })
+                    setWallet({ publicKey: walletData.publicKey, isConnected: true, balance: '0', usdcBalance: '0', tokenBalances: { XLM: '0', USDC: '0', USDT: '0' }, credentialId: credData.id })
                     setTimeout(() => refreshBalance(), 1000)
                     return
                 }
@@ -159,7 +184,7 @@ export function StellarProvider({ children }: { children: ReactNode }) {
                 localStorage.setItem(CREDENTIAL_STORAGE_KEY, JSON.stringify({ id: credentialId, createdAt: new Date().toISOString() }))
                 localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify({ publicKey, credentialId, createdAt: new Date().toISOString() }))
                 setKeypair(kp)
-                setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', credentialId })
+                setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', tokenBalances: { XLM: '0', USDC: '0', USDT: '0' }, credentialId })
                 setTimeout(() => refreshBalance(), 1000)
                 return
             }
@@ -171,7 +196,7 @@ export function StellarProvider({ children }: { children: ReactNode }) {
             localStorage.setItem(CREDENTIAL_STORAGE_KEY, JSON.stringify({ id: credentialId, createdAt: new Date().toISOString() }))
             localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify({ publicKey, credentialId, createdAt: new Date().toISOString() }))
             setKeypair(kp)
-            setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', credentialId })
+            setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', tokenBalances: { XLM: '0', USDC: '0', USDT: '0' }, credentialId })
 
             try {
                 await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`)
@@ -273,8 +298,85 @@ export function StellarProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    /**
+     * Create a new random Stellar wallet (for encrypted vault architecture)
+     * Returns both public and private keys for vault encryption
+     */
+    const createRandomWallet = async (): Promise<{ publicKey: string; privateKey: string }> => {
+        console.log('[STELLAR] Creating random wallet...')
+        const kp = Keypair.random()
+        const publicKey = kp.publicKey()
+        const privateKey = kp.secret()
+
+        // Create passkey for local authentication
+        const credential = await createNewPasskey()
+        const credentialId = credential.id
+
+        // Store wallet info locally
+        localStorage.setItem(CREDENTIAL_STORAGE_KEY, JSON.stringify({ id: credentialId, createdAt: new Date().toISOString() }))
+        localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify({ publicKey, credentialId, createdAt: new Date().toISOString() }))
+        localStorage.setItem(SECRET_STORAGE_KEY, privateKey) // Store secret for signing
+
+        setKeypair(kp)
+        setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', tokenBalances: { XLM: '0', USDC: '0', USDT: '0' }, credentialId })
+
+        // Fund with friendbot
+        try {
+            await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`)
+        } catch { }
+
+        setTimeout(() => refreshBalance(), 2000)
+
+        console.log('[STELLAR] ✅ Random wallet created:', publicKey.slice(0, 8) + '...')
+        return { publicKey, privateKey }
+    }
+
+    /**
+     * Connect wallet using a known secret key (for recovery)
+     */
+    const connectWithSecret = async (secret: string): Promise<void> => {
+        console.log('[STELLAR] Connecting with secret key...')
+        try {
+            const kp = Keypair.fromSecret(secret)
+            const publicKey = kp.publicKey()
+
+            // Create new passkey for local authentication
+            const credential = await createNewPasskey()
+            const credentialId = credential.id
+
+            // Store wallet info
+            localStorage.setItem(CREDENTIAL_STORAGE_KEY, JSON.stringify({ id: credentialId, createdAt: new Date().toISOString() }))
+            localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify({ publicKey, credentialId, createdAt: new Date().toISOString() }))
+            localStorage.setItem(SECRET_STORAGE_KEY, secret)
+
+            setKeypair(kp)
+            setWallet({ publicKey, isConnected: true, balance: '0', usdcBalance: '0', tokenBalances: { XLM: '0', USDC: '0', USDT: '0' }, credentialId })
+
+            setTimeout(() => refreshBalance(), 1000)
+
+            console.log('[STELLAR] ✅ Wallet connected from secret:', publicKey.slice(0, 8) + '...')
+        } catch (err: any) {
+            console.error('[STELLAR] Failed to connect with secret:', err)
+            throw new Error('Invalid secret key')
+        }
+    }
+
+    /**
+     * Get the current wallet's private key (for vault backup)
+     */
+    const getPrivateKey = (): string | null => {
+        // First try stored secret
+        const storedSecret = localStorage.getItem(SECRET_STORAGE_KEY)
+        if (storedSecret) return storedSecret
+
+        // Fallback to keypair if available
+        if (keypair) return keypair.secret()
+
+        return null
+    }
+
     return (
-        <StellarContext.Provider value={{ wallet, isConnecting, error, connect, disconnect, refreshBalance, signTransaction, createUSDCTrustline, sendUSDC }}>
+        <StellarContext.Provider value={{ wallet, isConnecting, error, connect, disconnect, refreshBalance, signTransaction, createUSDCTrustline, sendUSDC, createRandomWallet, connectWithSecret, getPrivateKey }}>
             {children}
         </StellarContext.Provider>
     )
